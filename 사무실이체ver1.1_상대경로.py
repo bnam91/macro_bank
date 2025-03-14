@@ -93,7 +93,7 @@ def locate_image_on_monitors(image_path):
         if location:
             return location
     return None
-
+    
 def locate_image_on_monitor(image_path, monitor):
     """단일 모니터에서 이미지를 찾습니다."""
     screen = capture_screen(monitor)
@@ -199,7 +199,7 @@ locate_and_click(COORDS["send_tab"])
 tm.sleep(1)
 
 # 다계좌 이체 버튼 클릭
-for _ in range(3):   # 탭 3번
+for _ in range(6):   # 탭 3번
     pyautogui.press('tab')
 
 pyautogui.press('enter')   
@@ -333,6 +333,8 @@ def standardize_bank_name(bank_name):
         return "한국씨티은행"
     elif "토스" in bank_name:
         return "토스뱅크"
+    elif "카카오페이증권" in bank_name:
+        return "카카오페이증권"    
     elif "미래에셋대우" in bank_name:
         return "미래에셋증권"
        
