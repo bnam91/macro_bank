@@ -6,23 +6,21 @@ import numpy as np
 import mss
 import os   
 import pandas as pd
-import re
+import re          
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
-# 현재 스크립트의 절대 경로를 얻고, 그 디렉토리로 작업 디렉토리 변경
-script_dir = os.path.dirname(os.path.abspath(__file__))
-os.chdir(script_dir)
 
-# 이미지 파일 경로를 src 폴더에서 찾도록 설정
-img_dir = os.path.join(script_dir, "src")
-print("이미지 디렉토리:", img_dir)
 
-# 이미지 파일들을 src 폴더에서 찾도록 설정
+# 작업 디렉토리 설정                    
+os.chdir("C:/Users/USER/Desktop/이체매크로")
+
+print("Current working directory:", os.getcwd())    
+
+# 이미지 파일 경로 설정
 COORDS = {
     "localdisktab": "localdisk.png",
     "outdisktab": "seagate_bt.png",
@@ -30,82 +28,43 @@ COORDS = {
     "send_tab": "send_tab.png",
     "multisend": "multisend_bt.png",
     "password4_input": "password4_input.png",
-    # 키보드 버튼 추가
-    "shift_bt": "shift_bt.png",
-    "golbang_bt": "golbang_bt.png",
-    "shift2_bt": "shift2_bt.png",
-    "key_g": "key_g.png",
-    "key_u": "key_u.png",
-    "key_s": "key_s.png",
-    "key_q": "key_q.png",
-    "key_l": "key_l.png",
-    "key_s": "key_s.png",
-    "key_1": "key_1.png",
-    "key_2": "key_2.png",
-    "key_0": "key_0.png",
-    "key_enter": "key_enter.png",
 }
 
-# 이미지 경로를 가져오는 함수 추가
-def get_image_path(image_name):
-    return os.path.join(img_dir, image_name)
-
-# 모니터 설정 부분을 동적으로 변경
-def get_monitor_configs():
-    with mss.mss() as sct:
-        monitors = []
-        for i, monitor in enumerate(sct.monitors[1:], 1):  # monitors[0]은 전체 화면이므로 제외
-            monitors.append({
-                'top': monitor['top'],
-                'left': monitor['left'],
-                'width': monitor['width'],
-                'height': monitor['height'],
-                'number': i
-            })
-            print(f"모니터 {i} 감지됨: {monitors[-1]}")
-        return monitors
-
-# 전역 변수로 모니터 설정
-MONITORS = get_monitor_configs()
+monitor_1 = {'top': 0, 'left': 1920, 'width': 1920, 'height': 1080}
+monitor_2 = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080}
 
 def capture_screen(region):
-    with mss.mss() as sct:
+    with mss.mss() as sct:   
         screenshot = sct.grab(region)
         img = np.array(screenshot)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         return img
 
 def match_template(screen, template_path):
-    # 전체 경로로 이미지 로드
-    full_path = get_image_path(template_path)
-    template = cv2.imread(full_path, cv2.IMREAD_COLOR)
+    template = cv2.imread(template_path, cv2.IMREAD_COLOR)
     if template is None:
-        raise ValueError(f"이미지를 찾을 수 없습니다: {full_path}")
+        raise ValueError(f"이미지를 찾을 수 없습니다: {template_path}")
 
     result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    if max_val >= 0.97:  # 일치율이 90% 이상인 경우
+    if max_val >= 0.95:  # 일치율이 95% 이상인 경우
         return (max_loc[0] + template.shape[1] // 2, max_loc[1] + template.shape[0] // 2)
     return None
 
-def locate_image_on_monitors(image_path):
-    """모든 감지된 모니터에서 이미지를 찾습니다."""
-    for monitor in MONITORS:
-        location = locate_image_on_monitor(image_path, monitor)
-        if location:
-            return location
-    return None
-    
 def locate_image_on_monitor(image_path, monitor):
-    """단일 모니터에서 이미지를 찾습니다."""
     screen = capture_screen(monitor)
     location = match_template(screen, image_path)
     if location:
-        location = (location[0] + monitor['left'], location[1] + monitor['top'])
+        location = (location[0] + monitor['left'], location[1] + monitor['top']) 
     return location
 
-def locate_and_click(image_name):
-    image_path = COORDS[image_name]  # 이미지 파일명 가져오기
+def locate_image_on_monitors(image_path):
+    location = locate_image_on_monitor(image_path, monitor_1)
+    if not location:
+        location = locate_image_on_monitor(image_path, monitor_2)       
+    return location
+
+def locate_and_click(image_path):
     print(f"{image_path}을(를) 찾고 클릭합니다.")
     location = locate_image_on_monitors(image_path)
     if location:
@@ -128,90 +87,83 @@ options.add_argument("--disable-blink-features=AutomationControlled")
 driver = webdriver.Chrome(options=options)
 driver.get(url)
 
-try:
-    # 최대 30초 동안 대기하되, 요소가 나타나면 즉시 진행
-    wait = WebDriverWait(driver, 30)
-    cert_login_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#certLogin")))
-    print(cert_login_element.text)
-    
-    # 클릭 시도와 재시도 로직
-    max_attempts = 5  # 최대 시도 횟수
-    for attempt in range(max_attempts):
-        try:
-            cert_login_element.click()
-            print("공동인증서 로그인 버튼 클릭 성공")
-            break  # 성공하면 반복문 종료
-        except Exception as e:
-            if attempt < max_attempts - 1:  # 마지막 시도가 아니면
-                print(f"클릭 실패, 1초 후 재시도합니다. ({attempt+1}/{max_attempts})")
-                tm.sleep(1)  # 1초 대기 후 재시도
-            else:
-                print(f"최대 시도 횟수 초과: {e}")
-                raise  # 재시도 모두 실패 시 예외 발생
-except TimeoutException:
-    print("certLogin 버튼을 찾을 수 없습니다.")
-    driver.quit()
+# WebDriverWait를 사용하여 요소가 나타날 때까지 대기 (최대 30초)
+wait = WebDriverWait(driver, 30)
+cert_login_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#certLogin")))
+print(cert_login_element.text)
 
-tm.sleep(10)  # 이후 작업을 위한 대기 시간은 유지
+# 클릭 시도와 재시도 로직
+max_attempts = 5  # 최대 시도 횟수
+for attempt in range(max_attempts):
+    try:
+        cert_login_element.click()
+        print("공동인증서 로그인 버튼 클릭 성공")
+        break  # 성공하면 반복문 종료
+    except Exception as e:
+        if attempt < max_attempts - 1:  # 마지막 시도가 아니면
+            print(f"클릭 실패, 1초 후 재시도합니다. ({attempt+1}/{max_attempts})")
+            tm.sleep(1)  # 1초 대기 후 재시도
+        else:
+            print(f"최대 시도 횟수 초과: {e}")
+            raise  # 재시도 모두 실패 시 예외 발생
+
+tm.sleep(10)  # 다음 단계를 위한 대기시간
+
+# 이미지가 나타날 때까지 기다리는 함수
+def wait_for_image(image_path, max_wait=10):
+    print(f"{image_path}이(가) 나타날 때까지 최대 {max_wait}초 대기합니다.")
+    start_time = tm.time()
+    while tm.time() - start_time < max_wait:
+        location = locate_image_on_monitors(image_path)
+        if location:
+            print(f"{image_path}의 위치를 찾았습니다: {location}")
+            return location
+        tm.sleep(1)  # 1초마다 확인
+    print(f"{image_path}를 {max_wait}초 내에 찾지 못했습니다.")
+    return None
 
 # PyAutoGUI를 이용한 인증서 로그인
 def login_with_certificate():
-    locate_and_click("localdisktab")   # 로컬디스크                    
-    tm.sleep(3)
-    locate_and_click("outdisktab")     # 외장하드선택
-    tm.sleep(3)     
+    # localdisktab이 나타날 때까지 기다린 후 클릭
+    location = wait_for_image(COORDS["localdisktab"])
+    if location:
+        pyautogui.click(location)
+        print(f"{COORDS['localdisktab']}을(를) 클릭했습니다.")
+    else:
+        print(f"{COORDS['localdisktab']}를 찾지 못했습니다.")
+    
+    # outdisktab이 나타날 때까지 기다린 후 클릭 (최대 3초)
+    location = wait_for_image(COORDS["outdisktab"], max_wait=3)
+    if location:
+        pyautogui.click(location)
+        print(f"{COORDS['outdisktab']}을(를) 클릭했습니다.")
+    else:
+        print(f"{COORDS['outdisktab']}를 찾지 못했습니다.")
+        # 찾지 못한 경우에도 계속 진행
+        
+    tm.sleep(3)  # 이 대기 시간은 유지 (다음 단계를 위한 대기)
     
     for _ in range(6):   # 탭 6번
         pyautogui.press('tab')
         tm.sleep(0.15)
     
-    # 화면 전환을 위한 대기 시간 추가
-    tm.sleep(2)  # 2초 대기0
+    # 비밀번호 입력 (한글자씩 입력)
+    password = "@gusqls120"
+    for char in password:
+        pyautogui.press(char)
+        tm.sleep(0.07)
     
-    # shift_bt 이미지가 있는지 확인
-    shift_location = locate_image_on_monitors(COORDS["shift_bt"])
-    
-    if shift_location:  # shift_bt가 있으면 (None이 아니면)
-        # shift_bt가 있으면 마우스 클릭으로 입력
-        print("마우스 클릭으로 비밀번호 입력")
-        keyboard_sequence = [
-            "shift_bt",
-            "golbang_bt",
-            "shift2_bt",
-            "key_g",
-            "key_u",
-            "key_s",
-            "key_q",
-            "key_l",
-            "key_s",
-            "key_1",
-            "key_2",
-            "key_0",
-            "key_enter"
-        ]
-        
-        for key in keyboard_sequence:
-            locate_and_click(key)
-            tm.sleep(0.1)  # 각 키 입력 사이에 0.1초 대기
-    else:
-        # shift_bt가 없으면 키보드로 입력
-        print("키보드로 비밀번호 입력")
-        password = "@gusqls120"
-        for char in password:
-            pyautogui.press(char)
-            tm.sleep(0.07)
-    
-    locate_and_click("commonlogin")    # 공동로그인 버튼 클릭
+    locate_and_click(COORDS["commonlogin"])    # 공동로그인 버튼 클릭
 
 login_with_certificate()
-tm.sleep(8)
+tm.sleep(8)  # 로그인 완료 후 8초 대기
 
 # 프레임 전환
 frame_id = "hanaMainframe"  # 프레임 ID를 여기에 입력하세요
 driver.switch_to.frame(frame_id)
 
 # 이체 탭 클릭
-locate_and_click("send_tab")
+locate_and_click(COORDS["send_tab"])
 tm.sleep(1)
 
 # 다계좌 이체 버튼 클릭
@@ -265,7 +217,7 @@ bank_options = {
     "교보증권": "261",
     "대신증권": "267",
     "미래에셋증권": "238",
-    "DB금융투자": "279",
+    "DB금융투자": "279",        
     "유안타증권": "209",
     "메리츠증권": "287",
     "부국증권": "290",
@@ -289,7 +241,7 @@ bank_options = {
     "중국건설은행": "067",
     "BNP파리바은행": "061",
     "한국포스증권": "294",
-    "다올투자증권": "227",
+    "다올투자증권": "227",                      
     "BNK투자증권": "224",
     "카카오페이증권": "288",
     "IBK투자증권": "225",
@@ -321,7 +273,7 @@ def standardize_bank_name(bank_name):
         return "농협"
     elif "nh농협" in bank_name:
         return "농협"
-    elif "대구" in bank_name:         
+    elif "대구" in bank_name:          
         return "iM뱅크(대구)"
     elif "im뱅크" in bank_name:
         return "iM뱅크(대구)"
@@ -349,11 +301,10 @@ def standardize_bank_name(bank_name):
         return "한국씨티은행"
     elif "토스" in bank_name:
         return "토스뱅크"
-    elif "카카오페이증권" in bank_name:
-        return "카카오페이증권"    
     elif "미래에셋대우" in bank_name:
         return "미래에셋증권"
        
+    
     # 필요한 경우 추가 은행명 표준화
     return bank_name
 
@@ -361,8 +312,12 @@ def standardize_bank_name(bank_name):
 
 # 전처리 함수
 def preprocess_account_info(account_info):
+    # NaN 값이나 문자열이 아닌 경우 처리
+    if pd.isna(account_info) or not isinstance(account_info, str):
+        return "", ""
+        
     # 은행명과 계좌번호 분리
-    match = re.match(r'(\D+)\s*([\d\s\-]+)', account_info)
+    match = re.match(r'(\D+)\s*([\d\s\-]+)', str(account_info))
     if match:
         bank_name = standardize_bank_name(match.group(1).strip())
         account_number = re.sub(r'[\s\-]', '', match.group(2))
@@ -373,7 +328,7 @@ def preprocess_account_info(account_info):
     return bank_name, account_number
 
 # 엑셀 파일 로드
-excel_path = os.path.join(script_dir, "이체정보.xlsx")
+excel_path = "C:/Users/USER/Desktop/이체매크로/이체정보.xlsx"  # 엑셀 파일 경로를 지정하세요
 df = pd.read_excel(excel_path)
 
 # 전처리된 데이터를 저장할 리스트
