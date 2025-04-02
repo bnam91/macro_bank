@@ -449,69 +449,19 @@ def input_transfer_info(data, index):
     except Exception as e:
         print(f"오류 발생 {name_product}: {e}")
 
-# paymAcctPw에 '5800' 입력
-def enter_password():
-    try:
-        # 스크롤을 맨 위로 올려서 계좌비밀번호 필드로 이동
-        driver.execute_script("window.scrollTo(0, 0)")
-        tm.sleep(0.5)  # 스크롤 후 잠시 대기
-        
-        password_element = driver.find_element(By.ID, "paymAcctPw")
-        password_element.click()
-        tm.sleep(0.1)  # 첫 번째 문자 입력 전에 짧은 지연을 추가
-        type_number("5800")
-        print("비밀번호 입력 성공")
-    except Exception as e:
-        print(f"비밀번호 입력 오류: {e}")
+# # paymAcctPw에 '5800' 입력
+# def enter_password():
+#     try:
+#         password_element = driver.find_element(By.ID, "paymAcctPw")
+#         password_element.click()
+#         tm.sleep(0.1)  # 첫 번째 문자 입력 전에 짧은 지연을 추가
+#         type_number("5800")
+#         print("비밀번호 입력 성공")
+#     except Exception as e:
+#         print(f"비밀번호 입력 오류: {e}")
 
-# 다계좌이체진행 버튼 클릭
-def click_transfer_button():
-    try:
-        # 1~2초 대기
-        tm.sleep(2)
-        
-        # 스크롤을 아래로 내려서 버튼 위치로 이동
-        driver.execute_script("window.scrollBy(0, 500)")
-        tm.sleep(0.5)  # 스크롤 후 잠시 대기
-        
-        # 다계좌이체진행 버튼 찾기 및 클릭
-        transfer_button = driver.find_element(By.XPATH, "//a[contains(text(), '다계좌이체진행')]")
-        transfer_button.click()
-        print("다계좌이체진행 버튼 클릭 성공")
-    except Exception as e:
-        print(f"다계좌이체진행 버튼 클릭 오류: {e}")
-
-# 보이스피싱 예방 팝업 처리 함수
-def handle_voice_phishing_popup():
-    try:
-        # 최대 60초 동안 1초마다 팝업 확인
-        for i in range(60):
-            tm.sleep(1)  # 1초 대기
-            print(f"팝업 감지 중... {i+1}초 경과")
-            
-            # 보이스피싱 예방 팝업 존재 여부 확인 - 두 가지 ID 모두 확인
-            voice_phishing_popup1 = driver.find_elements(By.ID, "voicePhishingPopup1")
-            voice_phishing_popup2 = driver.find_elements(By.ID, "lonFrdInfoPop")
-            
-            # 첫 번째 유형의 보이스피싱 팝업 확인
-            if voice_phishing_popup1 and len(voice_phishing_popup1) > 0 and voice_phishing_popup1[0].is_displayed():
-                print("보이스피싱 예방 팝업(voicePhishingPopup1) 감지됨 - 사용자 확인 필요")
-                print("팝업의 '아니요' 버튼을 수동으로 클릭해주세요")
-                return True
-                
-            # 두 번째 유형의 보이스피싱 팝업 확인
-            if voice_phishing_popup2 and len(voice_phishing_popup2) > 0 and voice_phishing_popup2[0].is_displayed():
-                print("보이스피싱 예방 팝업(lonFrdInfoPop) 감지됨 - 사용자 확인 필요")
-                print("팝업의 '아니요' 버튼을 수동으로 클릭해주세요")
-                return True
-                
-            # 중복이체 확인 팝업 등 다른 팝업이 있는 경우도 계속 감시
-            
-        print("60초 동안 보이스피싱 예방 팝업이 나타나지 않음")
-        return False
-    except Exception as e:
-        print(f"팝업 감지 중 오류 발생: {e}")
-        return False
+# 비밀번호 입력
+# enter_password()
 
 # 최대 10개의 항목 입력
 for index, data in enumerate(processed_data):
@@ -519,15 +469,6 @@ for index, data in enumerate(processed_data):
         break
     input_transfer_info(data, index)
     tm.sleep(0.5)  # 각 세트 완료 후 잠시 대기
-
-# 이체 정보 입력 후 비밀번호 입력
-enter_password()
-
-# 다계좌이체진행 버튼 클릭
-click_transfer_button()
-
-# 보이스피싱 예방 팝업 처리
-handle_voice_phishing_popup()
 
 # 나머지 코드는 필요에 따라 추가        
 
