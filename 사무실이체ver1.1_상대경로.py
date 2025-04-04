@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from bs4 import BeautifulSoup
 
 # 현재 스크립트의 절대 경로를 얻고, 그 디렉토리로 작업 디렉토리 변경
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -73,7 +74,7 @@ def capture_screen(region):
         screenshot = sct.grab(region)
         img = np.array(screenshot)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-        return img
+        return img                      
 
 def match_template(screen, template_path):
     # 전체 경로로 이미지 로드
@@ -84,7 +85,7 @@ def match_template(screen, template_path):
 
     result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    if max_val >= 0.97:  # 일치율이 90% 이상인 경우
+    if max_val >= 0.98:  # 일치율이 90% 이상인 경우
         return (max_loc[0] + template.shape[1] // 2, max_loc[1] + template.shape[0] // 2)
     return None
 
@@ -210,8 +211,23 @@ tm.sleep(8)
 frame_id = "hanaMainframe"  # 프레임 ID를 여기에 입력하세요
 driver.switch_to.frame(frame_id)
 
-# 이체 탭 클릭
-locate_and_click("send_tab")
+# 이체 메뉴 직접 클릭 (send_tab.png 대신 HTML 요소 클릭)
+try:
+    # XPath를 사용하여 "이체" 링크 찾기 (585번 라인 부근의 요소)
+    transfer_link = driver.find_element(By.XPATH, "//a[@title='이체' and text()='이체']")
+    print("'이체' 메뉴 링크를 찾았습니다.")
+    
+    # 링크 클릭
+    transfer_link.click()
+    print("'이체' 메뉴 링크를 클릭했습니다.")
+    tm.sleep(1)
+except Exception as e:
+    print(f"'이체' 메뉴 링크 클릭 중 오류 발생: {e}")
+    # 실패했을 경우 기존 방식 시도
+    print("기존 방식으로 이체 탭 클릭을 시도합니다.")                       
+    
+    locate_and_click("send_tab")
+
 tm.sleep(1)
 
 # 다계좌 이체 버튼 클릭
@@ -320,6 +336,8 @@ def standardize_bank_name(bank_name):
     elif "NH농협" in bank_name:
         return "농협"
     elif "nh농협" in bank_name:
+        return "농협"
+    elif "농협/" in bank_name:
         return "농협"
     elif "대구" in bank_name:         
         return "iM뱅크(대구)"
@@ -495,22 +513,28 @@ def handle_voice_phishing_popup():
             
             # 첫 번째 유형의 보이스피싱 팝업 확인
             if voice_phishing_popup1 and len(voice_phishing_popup1) > 0 and voice_phishing_popup1[0].is_displayed():
-                print("보이스피싱 예방 팝업(voicePhishingPopup1) 감지됨 - 사용자 확인 필요")
-                print("팝업의 '아니요' 버튼을 수동으로 클릭해주세요")
+                print("보이스피싱 예방 팝업(voicePhishingPopup1) 감지됨")
+                
+                # '아니요' 버튼 클릭
+                no_button = driver.find_element(By.XPATH, "//a[contains(@onclick, 'pbk.transfer.common.lonFrdInfoPopN()')]")
+                no_button.click()
+                print("'아니요' 버튼 클릭 성공")
                 return True
                 
             # 두 번째 유형의 보이스피싱 팝업 확인
             if voice_phishing_popup2 and len(voice_phishing_popup2) > 0 and voice_phishing_popup2[0].is_displayed():
-                print("보이스피싱 예방 팝업(lonFrdInfoPop) 감지됨 - 사용자 확인 필요")
-                print("팝업의 '아니요' 버튼을 수동으로 클릭해주세요")
+                print("보이스피싱 예방 팝업(lonFrdInfoPop) 감지됨")
+                
+                # '아니요' 버튼 클릭
+                no_button = driver.find_element(By.XPATH, "//a[contains(@onclick, 'pbk.transfer.common.lonFrdInfoPopN()')]")
+                no_button.click()
+                print("'아니요' 버튼 클릭 성공")
                 return True
                 
-            # 중복이체 확인 팝업 등 다른 팝업이 있는 경우도 계속 감시
-            
         print("60초 동안 보이스피싱 예방 팝업이 나타나지 않음")
         return False
     except Exception as e:
-        print(f"팝업 감지 중 오류 발생: {e}")
+        print(f"팝업 처리 중 오류 발생: {e}")
         return False
 
 # 최대 10개의 항목 입력
