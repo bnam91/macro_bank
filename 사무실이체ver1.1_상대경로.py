@@ -371,6 +371,9 @@ def standardize_bank_name(bank_name):
         return "카카오페이증권"    
     elif "미래에셋대우" in bank_name:
         return "미래에셋증권"
+    elif "미래에셋" in bank_name:
+        return "미래에셋증권"
+       
        
     # 필요한 경우 추가 은행명 표준화
     return bank_name
