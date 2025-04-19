@@ -23,6 +23,10 @@ os.chdir(script_dir)
 img_dir = os.path.join(script_dir, "src")
 print("이미지 디렉토리:", img_dir)
 
+# 사용자에게 다계좌이체진행 여부를 묻기
+user_input = input("다계좌이체진행을 바로 진행할까요? (y/n): ")
+auto_transfer = user_input.lower() == 'y'
+
 # 이미지 파일들을 src 폴더에서 찾도록 설정
 COORDS = {
     "localdisktab": "localdisk.png",
@@ -49,7 +53,9 @@ COORDS = {
 
 # 이미지 경로를 가져오는 함수 추가
 def get_image_path(image_name):
-    return os.path.join(img_dir, image_name)
+    # 이미지 경로를 유니코드로 변환하여 처리
+    path = os.path.join(img_dir, image_name)
+    return os.path.normpath(path)
 
 # 모니터 설정 부분을 동적으로 변경
 def get_monitor_configs():
@@ -79,7 +85,8 @@ def capture_screen(region):
 def match_template(screen, template_path):
     # 전체 경로로 이미지 로드
     full_path = get_image_path(template_path)
-    template = cv2.imread(full_path, cv2.IMREAD_COLOR)
+    # cv2.imread 대신 numpy를 사용하여 이미지 로드
+    template = cv2.imdecode(np.fromfile(full_path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if template is None:
         raise ValueError(f"이미지를 찾을 수 없습니다: {full_path}")
 
@@ -490,7 +497,7 @@ def click_transfer_button():
     try:
         # 1~2초 대기
         tm.sleep(2)
-        
+                                
         # 스크롤을 아래로 내려서 버튼 위치로 이동
         driver.execute_script("window.scrollBy(0, 500)")
         tm.sleep(0.5)  # 스크롤 후 잠시 대기
@@ -550,12 +557,15 @@ for index, data in enumerate(processed_data):
 # 이체 정보 입력 후 비밀번호 입력
 enter_password()
 
-# 다계좌이체진행 버튼 클릭
-click_transfer_button()
+# 사용자가 y 또는 Y를 입력한 경우에만 이체 진행
+if auto_transfer:
+    # 다계좌이체진행 버튼 클릭
+    click_transfer_button()
 
-# 보이스피싱 예방 팝업 처리
-handle_voice_phishing_popup()
-
-# 나머지 코드는 필요에 따라 추가        
+    # 보이스피싱 예방 팝업 처리
+    handle_voice_phishing_popup()
+    print("이체가 완료되었습니다.")     
+else:
+    print("이체가 취소되었습니다. 필요시 수동으로 다계좌이체진행 버튼을 클릭하세요.")
 
 ## 1.2ver 완성
