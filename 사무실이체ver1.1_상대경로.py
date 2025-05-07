@@ -437,7 +437,7 @@ def input_transfer_info(data, index):
         bank_element = driver.find_element(By.ID, f"rcvBnkCd{index}")
         option_value = bank_options.get(bank, "")
         if option_value:
-            option = bank_element.find_element(By.CSS_SELECTOR, f"option[value='{option_value}']")
+            option = bank_element.find_element(By.CSS_SELECTOR, f"option[value='{option_value}']")  
             option.click()
             print(f"{name_product} 은행 선택 성공: {bank}")
         else:
