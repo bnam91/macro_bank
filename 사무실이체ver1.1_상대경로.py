@@ -116,9 +116,25 @@ def locate_and_click(image_name):
     else:
         print(f"{image_path}의 위치를 찾을 수 없습니다.")
 
-def scroll_down():
-    pyautogui.scroll(-10000)
-
+def locate_and_click_with_retry(image_name, max_retries=30, retry_interval=1):
+    """이미지를 찾고 클릭하는 함수 (재시도 로직 포함)"""
+    image_path = COORDS[image_name]  # 이미지 파일명 가져오기
+    print(f"{image_path}을(를) 찾고 클릭합니다.")
+    
+    for attempt in range(max_retries):
+        location = locate_image_on_monitors(image_path)
+        if location:
+            print(f"{image_path}의 위치를 찾았습니다: {location}, 클릭합니다. (시도 {attempt+1}/{max_retries})")
+            pyautogui.click(location)
+            tm.sleep(1)
+            return True
+        else:
+            print(f"{image_path}의 위치를 찾을 수 없습니다. (시도 {attempt+1}/{max_retries})")
+            if attempt < max_retries - 1:  # 마지막 시도가 아니면
+                tm.sleep(retry_interval)  # 1초 대기 후 재시도
+    
+    print(f"{image_path}을(를) {max_retries}초 동안 찾을 수 없었습니다.")
+    return False
 
 # Selenium 설정 및 웹페이지 열기
 url = 'https://www.kebhana.com/common/login.do'
@@ -132,6 +148,18 @@ driver.get(url)
 try:
     # 최대 30초 동안 대기하되, 요소가 나타나면 즉시 진행
     wait = WebDriverWait(driver, 30)
+    
+    # 먼저 "공동/금융인증서 로그인" 메뉴 클릭
+    try:
+        # 공동/금융인증서 로그인 메뉴 찾기 및 클릭
+        cert_menu_element = wait.until(EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '공동/금융인증서 로그인')]")))
+        cert_menu_element.click()
+        print("공동/금융인증서 로그인 메뉴 클릭 성공")
+        tm.sleep(3)  # 3초 대기
+    except Exception as e:
+        print(f"공동/금융인증서 로그인 메뉴 클릭 실패: {e}")
+    
+    # 기존 공동인증서 로그인 버튼 클릭
     cert_login_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#certLogin")))
     print(cert_login_element.text)
     
@@ -139,7 +167,8 @@ try:
     max_attempts = 5  # 최대 시도 횟수
     for attempt in range(max_attempts):
         try:
-            cert_login_element.click()
+            # JavaScript로 클릭 시도 (더 안정적)
+            driver.execute_script("arguments[0].click();", cert_login_element)
             print("공동인증서 로그인 버튼 클릭 성공")
             break  # 성공하면 반복문 종료
         except Exception as e:
@@ -157,7 +186,11 @@ tm.sleep(10)  # 이후 작업을 위한 대기 시간은 유지
 
 # PyAutoGUI를 이용한 인증서 로그인
 def login_with_certificate():
-    locate_and_click("localdisktab")   # 로컬디스크                    
+    # localdisk.png를 30초간 1초 간격으로 찾기
+    if not locate_and_click_with_retry("localdisktab", max_retries=30, retry_interval=1):
+        print("localdisk.png를 찾을 수 없어 로그인을 중단합니다.")
+        return
+    
     tm.sleep(3)
     locate_and_click("outdisktab")     # 외장하드선택
     tm.sleep(3)     
