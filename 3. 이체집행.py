@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from bs4 import BeautifulSoup
 
 # 현재 스크립트의 절대 경로를 얻고, 그 디렉토리로 작업 디렉토리 변경
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +22,10 @@ os.chdir(script_dir)
 # 이미지 파일 경로를 src 폴더에서 찾도록 설정
 img_dir = os.path.join(script_dir, "src")
 print("이미지 디렉토리:", img_dir)
+
+# 사용자에게 다계좌이체진행 여부를 묻기
+user_input = input("다계좌이체진행을 바로 진행할까요? (y/n): ")
+auto_transfer = user_input.lower() == 'y'
 
 # 이미지 파일들을 src 폴더에서 찾도록 설정
 COORDS = {
@@ -48,7 +53,9 @@ COORDS = {
 
 # 이미지 경로를 가져오는 함수 추가
 def get_image_path(image_name):
-    return os.path.join(img_dir, image_name)
+    # 이미지 경로를 유니코드로 변환하여 처리
+    path = os.path.join(img_dir, image_name)
+    return os.path.normpath(path)
 
 # 모니터 설정 부분을 동적으로 변경
 def get_monitor_configs():
@@ -73,18 +80,19 @@ def capture_screen(region):
         screenshot = sct.grab(region)
         img = np.array(screenshot)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-        return img
+        return img                      
 
 def match_template(screen, template_path):
     # 전체 경로로 이미지 로드
     full_path = get_image_path(template_path)
-    template = cv2.imread(full_path, cv2.IMREAD_COLOR)
+    # cv2.imread 대신 numpy를 사용하여 이미지 로드
+    template = cv2.imdecode(np.fromfile(full_path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if template is None:
         raise ValueError(f"이미지를 찾을 수 없습니다: {full_path}")
 
     result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    if max_val >= 0.97:  # 일치율이 90% 이상인 경우
+    if max_val >= 0.98:  # 일치율이 90% 이상인 경우
         return (max_loc[0] + template.shape[1] // 2, max_loc[1] + template.shape[0] // 2)
     return None
 
@@ -107,13 +115,23 @@ def locate_image_on_monitor(image_path, monitor):
 def locate_and_click(image_name):
     image_path = COORDS[image_name]  # 이미지 파일명 가져오기
     print(f"{image_path}을(를) 찾고 클릭합니다.")
-    location = locate_image_on_monitors(image_path)
-    if location:
-        print(f"{image_path}의 위치를 찾았습니다: {location}, 클릭합니다.")
-        pyautogui.click(location)
-        tm.sleep(1)
-    else:
-        print(f"{image_path}의 위치를 찾을 수 없습니다.")
+    
+    # 최대 20회 재시도
+    max_attempts = 20
+    for attempt in range(max_attempts):
+        location = locate_image_on_monitors(image_path)
+        if location:
+            print(f"{image_path}의 위치를 찾았습니다: {location}, 클릭합니다.")
+            pyautogui.click(location)
+            tm.sleep(1)
+            return True
+        else:
+            if attempt < max_attempts - 1:  # 마지막 시도가 아니면
+                print(f"{image_path}의 위치를 찾을 수 없습니다. 1초 후 재시도합니다. ({attempt+1}/{max_attempts})")
+                tm.sleep(1)  # 1초 대기 후 재시도
+            else:
+                print(f"{image_path}의 위치를 찾을 수 없습니다. 최대 시도 횟수 초과.")
+                return False
 
 def scroll_down():
     pyautogui.scroll(-10000)
@@ -135,7 +153,7 @@ try:
     print(cert_login_element.text)
     
     # 클릭 시도와 재시도 로직
-    max_attempts = 5  # 최대 시도 횟수
+    max_attempts = 60  # 최대 시도 횟수
     for attempt in range(max_attempts):
         try:
             cert_login_element.click()
@@ -210,8 +228,23 @@ tm.sleep(8)
 frame_id = "hanaMainframe"  # 프레임 ID를 여기에 입력하세요
 driver.switch_to.frame(frame_id)
 
-# 이체 탭 클릭
-locate_and_click("send_tab")
+# 이체 메뉴 직접 클릭 (send_tab.png 대신 HTML 요소 클릭)
+try:
+    # XPath를 사용하여 "이체" 링크 찾기 (585번 라인 부근의 요소)
+    transfer_link = driver.find_element(By.XPATH, "//a[@title='이체' and text()='이체']")
+    print("'이체' 메뉴 링크를 찾았습니다.")
+    
+    # 링크 클릭
+    transfer_link.click()
+    print("'이체' 메뉴 링크를 클릭했습니다.")
+    tm.sleep(1)
+except Exception as e:
+    print(f"'이체' 메뉴 링크 클릭 중 오류 발생: {e}")
+    # 실패했을 경우 기존 방식 시도
+    print("기존 방식으로 이체 탭 클릭을 시도합니다.")                       
+    
+    locate_and_click("send_tab")
+
 tm.sleep(1)
 
 # 다계좌 이체 버튼 클릭
@@ -321,6 +354,8 @@ def standardize_bank_name(bank_name):
         return "농협"
     elif "nh농협" in bank_name:
         return "농협"
+    elif "농협/" in bank_name:
+        return "농협"
     elif "대구" in bank_name:         
         return "iM뱅크(대구)"
     elif "im뱅크" in bank_name:
@@ -353,6 +388,9 @@ def standardize_bank_name(bank_name):
         return "카카오페이증권"    
     elif "미래에셋대우" in bank_name:
         return "미래에셋증권"
+    elif "미래에셋" in bank_name:
+        return "미래에셋증권"
+       
        
     # 필요한 경우 추가 은행명 표준화
     return bank_name
@@ -449,19 +487,75 @@ def input_transfer_info(data, index):
     except Exception as e:
         print(f"오류 발생 {name_product}: {e}")
 
-# # paymAcctPw에 '5800' 입력
-# def enter_password():
-#     try:
-#         password_element = driver.find_element(By.ID, "paymAcctPw")
-#         password_element.click()
-#         tm.sleep(0.1)  # 첫 번째 문자 입력 전에 짧은 지연을 추가
-#         type_number("5800")
-#         print("비밀번호 입력 성공")
-#     except Exception as e:
-#         print(f"비밀번호 입력 오류: {e}")
+# paymAcctPw에 '5800' 입력
+def enter_password():
+    try:
+        # 스크롤을 맨 위로 올려서 계좌비밀번호 필드로 이동
+        driver.execute_script("window.scrollTo(0, 0)")
+        tm.sleep(0.5)  # 스크롤 후 잠시 대기
+        
+        password_element = driver.find_element(By.ID, "paymAcctPw")
+        password_element.click()
+        tm.sleep(0.1)  # 첫 번째 문자 입력 전에 짧은 지연을 추가
+        type_number("5800")
+        print("비밀번호 입력 성공")
+    except Exception as e:
+        print(f"비밀번호 입력 오류: {e}")
 
-# 비밀번호 입력
-# enter_password()
+# 다계좌이체진행 버튼 클릭
+def click_transfer_button():
+    try:
+        # 1~2초 대기
+        tm.sleep(2)
+                                
+        # 스크롤을 아래로 내려서 버튼 위치로 이동
+        driver.execute_script("window.scrollBy(0, 500)")
+        tm.sleep(0.5)  # 스크롤 후 잠시 대기
+        
+        # 다계좌이체진행 버튼 찾기 및 클릭
+        transfer_button = driver.find_element(By.XPATH, "//a[contains(text(), '다계좌이체진행')]")
+        transfer_button.click()
+        print("다계좌이체진행 버튼 클릭 성공")
+    except Exception as e:
+        print(f"다계좌이체진행 버튼 클릭 오류: {e}")
+
+# 보이스피싱 예방 팝업 처리 함수
+def handle_voice_phishing_popup():
+    try:
+        # 최대 60초 동안 1초마다 팝업 확인
+        for i in range(60):
+            tm.sleep(1)  # 1초 대기
+            print(f"팝업 감지 중... {i+1}초 경과")
+            
+            # 보이스피싱 예방 팝업 존재 여부 확인 - 두 가지 ID 모두 확인
+            voice_phishing_popup1 = driver.find_elements(By.ID, "voicePhishingPopup1")
+            voice_phishing_popup2 = driver.find_elements(By.ID, "lonFrdInfoPop")
+            
+            # 첫 번째 유형의 보이스피싱 팝업 확인
+            if voice_phishing_popup1 and len(voice_phishing_popup1) > 0 and voice_phishing_popup1[0].is_displayed():
+                print("보이스피싱 예방 팝업(voicePhishingPopup1) 감지됨")
+                
+                # '아니요' 버튼 클릭
+                no_button = driver.find_element(By.XPATH, "//a[contains(@onclick, 'pbk.transfer.common.lonFrdInfoPopN()')]")
+                no_button.click()
+                print("'아니요' 버튼 클릭 성공")
+                return True
+                
+            # 두 번째 유형의 보이스피싱 팝업 확인
+            if voice_phishing_popup2 and len(voice_phishing_popup2) > 0 and voice_phishing_popup2[0].is_displayed():
+                print("보이스피싱 예방 팝업(lonFrdInfoPop) 감지됨")
+                
+                # '아니요' 버튼 클릭
+                no_button = driver.find_element(By.XPATH, "//a[contains(@onclick, 'pbk.transfer.common.lonFrdInfoPopN()')]")
+                no_button.click()
+                print("'아니요' 버튼 클릭 성공")
+                return True
+                
+        print("60초 동안 보이스피싱 예방 팝업이 나타나지 않음")
+        return False
+    except Exception as e:
+        print(f"팝업 처리 중 오류 발생: {e}")
+        return False
 
 # 최대 10개의 항목 입력
 for index, data in enumerate(processed_data):
@@ -470,6 +564,18 @@ for index, data in enumerate(processed_data):
     input_transfer_info(data, index)
     tm.sleep(0.5)  # 각 세트 완료 후 잠시 대기
 
-# 나머지 코드는 필요에 따라 추가        
+# 이체 정보 입력 후 비밀번호 입력
+enter_password()
+
+# 사용자가 y 또는 Y를 입력한 경우에만 이체 진행
+if auto_transfer:
+    # 다계좌이체진행 버튼 클릭
+    click_transfer_button()
+
+    # 보이스피싱 예방 팝업 처리
+    handle_voice_phishing_popup()
+    print("이체가 완료되었습니다.")     
+else:
+    print("이체가 취소되었습니다. 필요시 수동으로 다계좌이체진행 버튼을 클릭하세요.")
 
 ## 1.2ver 완성
