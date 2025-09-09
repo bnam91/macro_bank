@@ -19,7 +19,11 @@ def update_sheets():
         sheet_map = {sheet['properties']['title']: sheet['properties']['sheetId'] for sheet in sheets}
 
         for sheet_name, sheet_id in sheet_map.items():
-            process_sheet(service, sheet_id, sheet_name)
+            # '완료'가 포함된 시트명은 제외
+            if '완료' not in sheet_name:
+                process_sheet(service, sheet_id, sheet_name)
+            else:
+                print(f"'{sheet_name}' 시트는 '완료'가 포함되어 제외됩니다.")
 
     except HttpError as error:
         print(f'오류가 발생했습니다: {error}')
