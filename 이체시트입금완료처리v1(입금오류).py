@@ -71,6 +71,11 @@ def find_name_locations(service, sheet_map, target_names):
     name_locations = {name: [] for name in target_names}
     
     for sheet_name, sheet_id in sheet_map.items():
+        # '완료_'가 포함된 시트는 검사에서 제외
+        if '완료_' in sheet_name:
+            print(f"시트 '{sheet_name}'는 완료 시트로 검사에서 제외됩니다.")
+            continue
+            
         print(f"시트 '{sheet_name}' 검사 중...")
         range_name = f'{sheet_name}!A1:P1000'
         
