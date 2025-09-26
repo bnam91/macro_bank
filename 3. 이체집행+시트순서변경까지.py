@@ -24,7 +24,7 @@ img_dir = os.path.join(script_dir, "src")
 print("이미지 디렉토리:", img_dir)
 
 # 사용자에게 다계좌이체진행 여부를 묻기
-user_input = input("다계좌이체진행을 바로 진행할까요? (y/n): ")
+user_input = input("🟠다계좌이체진행(자동)을 함께 진행할까요? (y/n): ")
 auto_transfer = user_input.lower() == 'y'
 
 # 이미지 파일들을 src 폴더에서 찾도록 설정
@@ -600,7 +600,7 @@ for index, data in enumerate(processed_data):
 # 이체 정보 입력 후 비밀번호 입력
 enter_password()
 
-# 사용자가 y 또는 Y를 입력한 경우에만 이체 진행
+# 자동/수동에 따른 처리
 if auto_transfer:
     # 다계좌이체진행 버튼 클릭
     click_transfer_button()
@@ -616,9 +616,11 @@ print("\n" + "="*50)
 print("이체 작업이 완료되었습니다!")
 print("="*50)
 
-sheet_organize_input = input("시트 순서를 변경하시겠습니까? (y/n): ")
-if sheet_organize_input.lower() == 'y':
-    print("시트 순서 변경을 시작합니다...")
+# 무한 루프로 계속 진행
+while True:
+    sheet_organize_input = input("🟢시트 순서를 변경하시겠습니까? (y/n): ")
+    if sheet_organize_input.lower() == 'y':
+        print("시트 순서 변경을 시작합니다...")
     
     # 1. 시트순서변경.py의 기능을 여기에 통합
     import openpyxl
@@ -633,10 +635,10 @@ if sheet_organize_input.lower() == 'y':
                 # 워크북을 다시 로드하여 현재 상태 확인
                 workbook = openpyxl.load_workbook(file_path)
                 current_sheets = workbook.sheetnames
-                print(f"\n현재 맨 앞에 있는 시트명은 '{current_sheets[0]}'입니다.")
+                print(f"\n현재 맨 앞에 있는 시트명은 👉 '{current_sheets[0]}'입니다.")
                 
                 # 사용자 입력 받기
-                user_input = input("어떤 시트를 맨앞으로 가져올까요? (숫자 또는 시트명 입력, 'clean'으로 정리, 'exit'로 종료): ")
+                user_input = input("🟢어떤 시트를 맨앞으로 가져올까요? (숫자 또는 시트명 입력, 'clean'으로 정리, 'exit'로 종료): ")
                 
                 if user_input.lower() == 'exit':
                     break
@@ -667,7 +669,7 @@ if sheet_organize_input.lower() == 'y':
                         target_sheet = user_input
                         
                     if target_sheet:
-                        # 시트 순서 변경
+                        # 시트 순서 변경 - 1.시트순서변경.py와 동일한 방법
                         sheets = workbook._sheets
                         
                         # 먼저 Sheet1을 맨 뒤로 이동 (target이 Sheet1이 아닌 경우에만)
@@ -700,7 +702,300 @@ if sheet_organize_input.lower() == 'y':
     organize_excel_sheets(str(file_path))  # Path 객체를 문자열로 변환
     
     print("시트 순서 변경이 완료되었습니다.")
-else:
-    print("시트 순서 변경을 건너뜁니다.")
+    
+    # 시트 변경 후 이체 진행 여부 묻기
+    retry_transfer_input = input("🟢시트를 변경했으니 다시 이체를 진행할까요? (y/n): ")
+    if retry_transfer_input.lower() == 'y':
+        print("이체를 다시 진행합니다...")
+        
+        # 다계좌이체진행 자동/수동 여부 묻기
+        retry_auto_transfer_input = input("🟠다계좌이체진행(자동)을 함께 진행할까요? (y/n): ")
+        retry_auto_transfer = retry_auto_transfer_input.lower() == 'y'
+        
+        # 웹페이지 상태 확인 및 다계좌이체 페이지로 이동
+        try:
+            # 프레임 전환
+            driver.switch_to.default_content()  # 기본 프레임으로 돌아가기
+            frame_id = "hanaMainframe"
+            driver.switch_to.frame(frame_id)
+            
+            # 이체 메뉴 클릭
+            transfer_link = driver.find_element(By.XPATH, "//a[@title='이체' and text()='이체']")
+            transfer_link.click()
+            print("'이체' 메뉴 링크를 클릭했습니다.")
+            tm.sleep(1)     
+            
+            # 다계좌 이체 버튼 클릭
+            try:
+                # 먼저 이미지 인식으로 다계좌이체 버튼 찾기 시도
+                if locate_and_click("multisend"):
+                    print("이미지 인식으로 다계좌이체 버튼 클릭 성공")
+                else:
+                    # 이미지 인식 실패 시 탭으로 이동
+                    print("이미지 인식 실패, 탭으로 다계좌이체 버튼 찾기")
+                    for _ in range(6):   # 탭 6번
+                        pyautogui.press('tab')
+                    pyautogui.press('enter')   
+                    print("탭으로 다계좌이체 버튼 클릭 완료")
+            except Exception as e:
+                print(f"다계좌이체 버튼 클릭 중 오류: {e}")
+                # 실패 시 기존 방식으로 시도
+                for _ in range(6):   # 탭 6번
+                    pyautogui.press('tab')
+                pyautogui.press('enter')   
+            tm.sleep(3)
+            
+            # 스크롤 조정
+            scroll_amount = 1000
+            scroll_down(scroll_amount)
+            tm.sleep(1)
+            scroll_up(scroll_amount // 2)
+            
+        except Exception as e:
+            print(f"웹페이지 설정 중 오류 발생: {e}")
+            print("수동으로 다계좌이체 페이지로 이동해주세요.")
+        
+        # 이체 정보 입력 - 현재 첫 번째 시트에서 데이터 다시 로드
+        df_retry2 = pd.read_excel(excel_path, sheet_name=0)  # 현재 첫 번째 시트 사용
+        processed_data_retry2 = []
+        
+        for index, row in df_retry2.iterrows():
+            product_name = row.iloc[3]  # 제품명
+            customer_name = row.iloc[4]  # 이름
+            account_info = row.iloc[7]  # 은행+계좌번호
+            amount = row.iloc[9]  # 금액
+
+            # 계좌정보 전처리
+            bank_name, account_number = preprocess_account_info(account_info)
+            name_product = f"{customer_name}{product_name}"
+            processed_data_retry2.append((bank_name, account_number, name_product, product_name, amount))
+        
+        for index, data in enumerate(processed_data_retry2):
+            if index >= 10:
+                break
+            input_transfer_info(data, index)
+            tm.sleep(0.5)  # 각 세트 완료 후 잠시 대기
+
+        # 비밀번호 입력
+        enter_password()
+
+        # 자동/수동에 따른 처리
+        if retry_auto_transfer:
+            # 다계좌이체진행 버튼 클릭
+            click_transfer_button()
+
+            # 보이스피싱 예방 팝업 처리
+            handle_voice_phishing_popup()
+            print("이체가 완료되었습니다.")
+        else:
+            print("이체가 취소되었습니다. 필요시 수동으로 다계좌이체진행 버튼을 클릭하세요.")
+        
+        # 이체 완료 후 다시 시트 순서 변경 여부 묻기
+        print("\n" + "="*50)
+        print("이체 작업이 완료되었습니다!")
+        print("="*50)
+        
+        # 재귀적으로 시트 순서 변경 여부 묻기
+        sheet_organize_input = input("🟢시트 순서를 변경하시겠습니까? (y/n): ")
+        if sheet_organize_input.lower() == 'y':
+            print("시트 순서 변경을 시작합니다...")
+            organize_excel_sheets(str(file_path))
+            print("시트 순서 변경이 완료되었습니다.")
+            
+            # 다시 이체 진행 여부 묻기
+            retry_transfer_input2 = input("🟢시트를 변경했으니 다시 이체를 진행할까요? (y/n): ")
+            if retry_transfer_input2.lower() == 'y':
+                print("이체를 다시 진행합니다...")
+                
+                # 다계좌이체진행 자동/수동 여부 묻기
+                retry_auto_transfer_input2 = input("🟠다계좌이체진행(자동)을 함께 진행할까요? (y/n): ")
+                retry_auto_transfer2 = retry_auto_transfer_input2.lower() == 'y'
+                
+                # 웹페이지 상태 확인 및 다계좌이체 페이지로 이동
+                try:
+                    # 프레임 전환
+                    driver.switch_to.default_content()  # 기본 프레임으로 돌아가기
+                    frame_id = "hanaMainframe"
+                    driver.switch_to.frame(frame_id)
+                    
+                    # 이체 메뉴 클릭
+                    transfer_link = driver.find_element(By.XPATH, "//a[@title='이체' and text()='이체']")
+                    transfer_link.click()
+                    print("'이체' 메뉴 링크를 클릭했습니다.")
+                    tm.sleep(1)
+                    
+                    # 다계좌 이체 버튼 클릭
+                    try:
+                        # 먼저 이미지 인식으로 다계좌이체 버튼 찾기 시도
+                        if locate_and_click("multisend"):
+                            print("이미지 인식으로 다계좌이체 버튼 클릭 성공")
+                        else:
+                            # 이미지 인식 실패 시 탭으로 이동
+                            print("이미지 인식 실패, 탭으로 다계좌이체 버튼 찾기")
+                            for _ in range(6):   # 탭 6번
+                                pyautogui.press('tab')
+                            pyautogui.press('enter')   
+                            print("탭으로 다계좌이체 버튼 클릭 완료")
+                    except Exception as e:
+                        print(f"다계좌이체 버튼 클릭 중 오류: {e}")
+                        # 실패 시 기존 방식으로 시도
+                        for _ in range(6):   # 탭 6번
+                            pyautogui.press('tab')
+                        pyautogui.press('enter')   
+                    tm.sleep(3)
+                    
+                    # 스크롤 조정
+                    scroll_amount = 1000
+                    scroll_down(scroll_amount)
+                    tm.sleep(1)
+                    scroll_up(scroll_amount // 2)
+                    
+                except Exception as e:
+                    print(f"웹페이지 설정 중 오류 발생: {e}")
+                    print("수동으로 다계좌이체 페이지로 이동해주세요.")
+                
+                # 이체 정보 입력 - 현재 첫 번째 시트에서 데이터 다시 로드
+                df_retry = pd.read_excel(excel_path, sheet_name=0)  # 현재 첫 번째 시트 사용
+                processed_data_retry = []
+                
+                for index, row in df_retry.iterrows():
+                    product_name = row.iloc[3]  # 제품명
+                    customer_name = row.iloc[4]  # 이름
+                    account_info = row.iloc[7]  # 은행+계좌번호
+                    amount = row.iloc[9]  # 금액
+
+                    # 계좌정보 전처리
+                    bank_name, account_number = preprocess_account_info(account_info)
+                    name_product = f"{customer_name}{product_name}"
+                    processed_data_retry.append((bank_name, account_number, name_product, product_name, amount))
+                
+                for index, data in enumerate(processed_data_retry):
+                    if index >= 10:
+                        break
+                    input_transfer_info(data, index)
+                    tm.sleep(0.5)  # 각 세트 완료 후 잠시 대기
+
+                # 비밀번호 입력
+                enter_password()
+
+                # 자동/수동에 따른 처리
+                if retry_auto_transfer2:
+                    # 다계좌이체진행 버튼 클릭
+                    click_transfer_button()
+
+                    # 보이스피싱 예방 팝업 처리
+                    handle_voice_phishing_popup()
+                    print("이체가 완료되었습니다.")
+                else:
+                    print("이체가 취소되었습니다. 필요시 수동으로 다계좌이체진행 버튼을 클릭하세요.")
+                
+                # 이체 완료 후 다시 시트 순서 변경 여부 묻기
+                print("\n" + "="*50)
+                print("이체 작업이 완료되었습니다!")
+                print("="*50)
+                
+                # 재귀적으로 시트 순서 변경 여부 묻기
+                sheet_organize_input2 = input("🟢시트 순서를 변경하시겠습니까? (y/n): ")
+                if sheet_organize_input2.lower() == 'y':
+                    print("시트 순서 변경을 시작합니다...")
+                    organize_excel_sheets(str(file_path))
+                    print("시트 순서 변경이 완료되었습니다.")
+                    
+                    # 다시 이체 진행 여부 묻기
+                    retry_transfer_input3 = input("🟢시트를 변경했으니 다시 이체를 진행할까요? (y/n): ")
+                    if retry_transfer_input3.lower() == 'y':
+                        print("이체를 다시 진행합니다...")
+                        
+                        # 다계좌이체진행 자동/수동 여부 묻기
+                        retry_auto_transfer_input3 = input("🟠다계좌이체진행(자동)을 함께 진행할까요? (y/n): ")
+                        retry_auto_transfer3 = retry_auto_transfer_input3.lower() == 'y'
+                        
+                        # 웹페이지 상태 확인 및 다계좌이체 페이지로 이동
+                        try:
+                            # 프레임 전환
+                            driver.switch_to.default_content()  # 기본 프레임으로 돌아가기
+                            frame_id = "hanaMainframe"
+                            driver.switch_to.frame(frame_id)
+                            
+                            # 이체 메뉴 클릭
+                            transfer_link = driver.find_element(By.XPATH, "//a[@title='이체' and text()='이체']")
+                            transfer_link.click()
+                            print("'이체' 메뉴 링크를 클릭했습니다.")
+                            tm.sleep(1)
+                            
+                            # 다계좌 이체 버튼 클릭
+                            try:
+                                # 먼저 이미지 인식으로 다계좌이체 버튼 찾기 시도
+                                if locate_and_click("multisend"):
+                                    print("이미지 인식으로 다계좌이체 버튼 클릭 성공")
+                                else:
+                                    # 이미지 인식 실패 시 탭으로 이동
+                                    print("이미지 인식 실패, 탭으로 다계좌이체 버튼 찾기")
+                                    for _ in range(6):   # 탭 6번
+                                        pyautogui.press('tab')
+                                    pyautogui.press('enter')   
+                                    print("탭으로 다계좌이체 버튼 클릭 완료")
+                            except Exception as e:
+                                print(f"다계좌이체 버튼 클릭 중 오류: {e}")
+                                # 실패 시 기존 방식으로 시도
+                                for _ in range(6):   # 탭 6번
+                                    pyautogui.press('tab')
+                                pyautogui.press('enter')   
+                            tm.sleep(3)
+                            
+                            # 스크롤 조정
+                            scroll_amount = 1000
+                            scroll_down(scroll_amount)
+                            tm.sleep(1)
+                            scroll_up(scroll_amount // 2)
+                            
+                        except Exception as e:
+                            print(f"웹페이지 설정 중 오류 발생: {e}")
+                            print("수동으로 다계좌이체 페이지로 이동해주세요.")
+                        
+                        # 이체 정보 입력 - 현재 첫 번째 시트에서 데이터 다시 로드
+                        df_retry3 = pd.read_excel(excel_path, sheet_name=0)  # 현재 첫 번째 시트 사용
+                        processed_data_retry3 = []
+                        
+                        for index, row in df_retry3.iterrows():
+                            product_name = row.iloc[3]  # 제품명
+                            customer_name = row.iloc[4]  # 이름
+                            account_info = row.iloc[7]  # 은행+계좌번호
+                            amount = row.iloc[9]  # 금액
+
+                            # 계좌정보 전처리
+                            bank_name, account_number = preprocess_account_info(account_info)
+                            name_product = f"{customer_name}{product_name}"
+                            processed_data_retry3.append((bank_name, account_number, name_product, product_name, amount))
+                        
+                        for index, data in enumerate(processed_data_retry3):
+                            if index >= 10:
+                                break
+                            input_transfer_info(data, index)
+                            tm.sleep(0.5)  # 각 세트 완료 후 잠시 대기
+
+                        # 비밀번호 입력
+                        enter_password()
+
+                        # 자동/수동에 따른 처리
+                        if retry_auto_transfer3:
+                            # 다계좌이체진행 버튼 클릭
+                            click_transfer_button()
+
+                            # 보이스피싱 예방 팝업 처리
+                            handle_voice_phishing_popup()
+                            print("이체가 완료되었습니다.")
+                        else:
+                            print("이체가 취소되었습니다. 필요시 수동으로 다계좌이체진행 버튼을 클릭하세요.")
+                    else:
+                        print("이체를 건너뜁니다.")
+                else:
+                    print("시트 순서 변경을 건너뜁니다.")
+            else:
+                print("이체를 건너뜁니다.")
+        else:
+            print("시트 순서 변경을 건너뜁니다.")
+    else:
+        print("이체를 건너뜁니다.")
 
 ## 1.2ver 완성
