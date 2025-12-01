@@ -1,8 +1,14 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from auth import get_credentials
 from datetime import datetime
+import sys
 import time
+
+API_KEY_MODULE_DIR = r"C:\Users\신현빈\Desktop\github\api_key"
+if API_KEY_MODULE_DIR not in sys.path:
+    sys.path.insert(0, API_KEY_MODULE_DIR)
+
+from auth import get_credentials
 
 SPREADSHEET_ID = '1CK2UXTy7HKjBe2T0ovm5hfzAAKZxZAR_ev3cbTPOMPs'
 BACKUP_SPREADSHEET_ID = '12Ivr6aKhl585Y6889TVnbrSY-Qgevu9qri0cI4-y84s'

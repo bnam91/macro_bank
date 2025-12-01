@@ -4,3 +4,8 @@ __pycache__/
 **/__pycache__/
 이체정보.xlsx
 업데이트.md
+node_modules/
+*.log
+.DS_Store
+.env
+config.txt
