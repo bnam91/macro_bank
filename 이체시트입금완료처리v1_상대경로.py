@@ -1,8 +1,22 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from auth import get_credentials
 from datetime import datetime
+import importlib.util
+import sys
 import time
+
+API_KEY_DIR = r"C:\Users\신현빈\Desktop\github\api_key"
+AUTH_MODULE_PATH = fr"{API_KEY_DIR}\auth.py"
+
+if API_KEY_DIR not in sys.path:
+    sys.path.append(API_KEY_DIR)
+
+auth_spec = importlib.util.spec_from_file_location("external_auth", AUTH_MODULE_PATH)
+if auth_spec is None or auth_spec.loader is None:
+    raise ImportError(f"auth 모듈을 찾을 수 없습니다: {AUTH_MODULE_PATH}")
+auth_module = importlib.util.module_from_spec(auth_spec)
+auth_spec.loader.exec_module(auth_module)
+get_credentials = auth_module.get_credentials
 
 SPREADSHEET_ID = '1CK2UXTy7HKjBe2T0ovm5hfzAAKZxZAR_ev3cbTPOMPs'
 BACKUP_SPREADSHEET_ID = '12Ivr6aKhl585Y6889TVnbrSY-Qgevu9qri0cI4-y84s'
@@ -19,6 +33,9 @@ def update_sheets():
         sheet_map = {sheet['properties']['title']: sheet['properties']['sheetId'] for sheet in sheets}
 
         for sheet_name, sheet_id in sheet_map.items():
+            if '완료_' in sheet_name:
+                print(f"시트 '{sheet_name}'는 완료 시트로 건너뜁니다.")
+                continue
             process_sheet(service, sheet_id, sheet_name)
 
     except HttpError as error:

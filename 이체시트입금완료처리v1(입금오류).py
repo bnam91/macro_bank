@@ -1,12 +1,36 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from auth import get_credentials
 from datetime import datetime
+import importlib.util
+import sys
 import time
+
+API_KEY_DIR = r"C:\Users\신현빈\Desktop\github\api_key"
+AUTH_MODULE_PATH = fr"{API_KEY_DIR}\auth.py"
+
+if API_KEY_DIR not in sys.path:
+    sys.path.append(API_KEY_DIR)
+
+auth_spec = importlib.util.spec_from_file_location("external_auth", AUTH_MODULE_PATH)
+if auth_spec is None or auth_spec.loader is None:
+    raise ImportError(f"auth 모듈을 찾을 수 없습니다: {AUTH_MODULE_PATH}")
+auth_module = importlib.util.module_from_spec(auth_spec)
+auth_spec.loader.exec_module(auth_module)
+get_credentials = auth_module.get_credentials
 
 SPREADSHEET_ID = '1CK2UXTy7HKjBe2T0ovm5hfzAAKZxZAR_ev3cbTPOMPs'
 BACKUP_SPREADSHEET_ID = '12Ivr6aKhl585Y6889TVnbrSY-Qgevu9qri0cI4-y84s'
 BACKUP_SHEET_NAME = 'BackupData'  # 백업 스프레드시트의 시트 이름을 지정
+
+def confirm_processing(name, locations):
+    sheet_names = ', '.join(sorted({loc['sheet_name'] for loc in locations}))
+    while True:
+        confirm = input(f"'{name}'님을 [{sheet_names}] 시트에서 입금오류 처리할까요? (y/n, 기본 y): ").strip().lower()
+        if confirm in ('', 'y', 'yes'):
+            return True
+        if confirm in ('n', 'no'):
+            return False
+        print("y 또는 n으로 입력해주세요.")
 
 def update_sheets():
     try:
@@ -42,21 +66,30 @@ def update_sheets():
                         continue
                     elif exclude_input.lower() == 'y':
                         # 모든 시트 처리
-                        process_name(service, name, locations)
+                        if confirm_processing(name, locations):
+                            process_name(service, name, locations)
+                        else:
+                            print(f"'{name}'님 처리를 취소했습니다.")
                     else:
                         # 특정 시트 제외
                         exclude_sheets = [sheet.strip() for sheet in exclude_input.split(',')]
                         filtered_locations = [loc for loc in locations if loc['sheet_name'] not in exclude_sheets]
                         
                         if filtered_locations:
-                            process_name(service, name, filtered_locations)
-                            print(f"'{name}'님 처리 완료 (제외된 시트: {', '.join(exclude_sheets)})")
+                            if confirm_processing(name, filtered_locations):
+                                process_name(service, name, filtered_locations)
+                                print(f"'{name}'님 처리 완료 (제외된 시트: {', '.join(exclude_sheets)})")
+                            else:
+                                print(f"'{name}'님 처리를 취소했습니다.")
                         else:
                             print(f"모든 시트가 제외되어 '{name}'님은 처리되지 않았습니다.")
                 else:
                     # 시트가 1개인 경우 바로 처리
-                    process_name(service, name, locations)
-                    print(f"'{name}'님을 자동으로 입금오류 처리했습니다.")
+                    if confirm_processing(name, locations):
+                        process_name(service, name, locations)
+                        print(f"'{name}'님을 자동으로 입금오류 처리했습니다.")
+                    else:
+                        print(f"'{name}'님 처리를 취소했습니다.")
             else:
                 print(f"\n'{name}'님은 '입금요청' 상태로 어떤 시트에서도 발견되지 않았습니다.")
 
