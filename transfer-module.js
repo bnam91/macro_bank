@@ -52,7 +52,7 @@ async function switchToFrame(page, frameId) {
 const modifierKey = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function focusAndTypeWithKeyboard(frame, page, selector, text, options = {}) {
-  const { delay = 5 } = options;
+  const { delay = 5, waitBeforeType = 0 } = options;
   await frame.waitForSelector(selector, { timeout: 5000 });
   const focused = await frame.evaluate((sel) => {
     const element = document.querySelector(sel);
@@ -73,6 +73,9 @@ async function focusAndTypeWithKeyboard(frame, page, selector, text, options = {
 
   const value = String(text ?? '');
   if (value.length > 0) {
+    if (waitBeforeType > 0) {
+      await page.waitForTimeout(waitBeforeType);
+    }
     await page.keyboard.type(value, { delay });
   }
   await page.waitForTimeout(50);
@@ -314,7 +317,7 @@ async function inputTransferInfo(page, data, index) {
 
     // 계좌번호 입력
     const accountElementId = `#rcvAcctNo${index}`;
-    await focusAndTypeWithKeyboard(frame, page, accountElementId, accountNumber);
+    await focusAndTypeWithKeyboard(frame, page, accountElementId, accountNumber, { waitBeforeType: 1000 });
     console.log(`${nameProduct} 계좌번호 입력 성공: ${accountNumber}`);
 
     // 금액 입력
@@ -638,13 +641,17 @@ async function executeTransferProcess(page, excelPath, autoTransfer = false) {
       return false;
     }
 
-    // 4. 다계좌 이체 버튼 클릭 전 사용자 확인
-    const frame = await switchToFrame(page, "hanaMainframe");
-    const shouldContinue = await handleUserInput(frame, "이체 메뉴가 클릭되었습니다. 다계좌이체 버튼을 클릭하고 다음 프로세스를 진행할까요? (y/d/n): ", page);
-    if (!shouldContinue) {
-      console.log("사용자가 다계좌이체 진행을 중단했습니다.");
-      return false;
-    }
+    // 4. 다계좌 이체 버튼 클릭 전 사용자 확인 (현재 미사용)
+    // const frame = await switchToFrame(page, "hanaMainframe");
+    // const shouldContinue = await handleUserInput(
+    //   frame,
+    //   "이체 메뉴가 클릭되었습니다. 다계좌이체 버튼을 클릭하고 다음 프로세스를 진행할까요? (y/d/n): ",
+    //   page
+    // );
+    // if (!shouldContinue) {
+    //   console.log("사용자가 다계좌이체 진행을 중단했습니다.");
+    //   return false;
+    // }
 
     // 5. 다계좌 이체 버튼 클릭
     const multiTransferClicked = await clickMultiTransferButton(page);

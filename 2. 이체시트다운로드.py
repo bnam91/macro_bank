@@ -1,11 +1,19 @@
-from auth import get_credentials
-from googleapiclient.discovery import build
 import logging
-from openpyxl import load_workbook
 import os
-from openpyxl.utils import get_column_letter
+import sys
+import unicodedata
 import webbrowser  # 웹브라우저 모듈 추가
-from pathlib import Path  
+from pathlib import Path
+
+from googleapiclient.discovery import build
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+
+AUTH_MODULE_DIR = Path(r"C:\Users\신현빈\Desktop\github\api_key")
+if str(AUTH_MODULE_DIR) not in sys.path:
+    sys.path.append(str(AUTH_MODULE_DIR))
+
+from auth import get_credentials
 
 def get_data_from_sheets(spreadsheet_id, range_name):
     """Google Sheets에서 데이터를 가져오는 함수"""
@@ -47,6 +55,8 @@ def update_excel_file(excel_path, sheet_ranges):
     SPREADSHEET_ID = '1NOP5_s0gNUCWaGIgMo5WZmtqBbok_5a4XdpNVwu8n5c'
     processed_data = []  # 처리된 데이터를 저장할 리스트
     total_rows = 0
+    skipped_rows = []
+    name_mismatch_rows = []
     
     try:
         # 엑셀 파일이 없으면 생성
@@ -63,11 +73,77 @@ def update_excel_file(excel_path, sheet_ranges):
             logging.info(f"시트 {sheet_num} 처리 중...")
             
             data = get_data_from_sheets(SPREADSHEET_ID, f"시트1!{source_range}")
-            total_rows += len(data)
+            filtered_rows = []
+            source_start_row = int(source_range.split(':')[0][1:])
+            for row_idx, row in enumerate(data, start=1):
+                row = list(row)
+                if len(row) < 7:
+                    row += [""] * (7 - len(row))
+
+                customer_name = ""
+                if len(row) > 1 and row[1] is not None:
+                    customer_name = str(row[1]).strip()
+
+                # I열 전처리: 괄호 제거 후 숫자,영문,한글,'-',공백만 허용
+                if len(row) > 4 and isinstance(row[4], str):
+                    account_text = row[4].replace("(", "").replace(")", "")
+                    cleaned_account = []
+                    for ch in account_text:
+                        if ch.isdigit() or ch.isalpha() or ch in ['-', ' ']:
+                            cleaned_account.append(ch)
+                        else:
+                            name = unicodedata.name(ch, "")
+                            if "HANGUL" in name:
+                                cleaned_account.append(ch)
+                    row[4] = "".join(cleaned_account).strip()
+
+                reason = None
+                account_value = row[4] if len(row) > 4 else ""
+                if account_value is None or str(account_value).strip() == "":
+                    reason = "계좌번호 없음"
+
+                # J열 자리수 검증
+                if reason is None:
+                    id_value = row[5] if len(row) > 5 else ""
+                    digits_only = "".join(ch for ch in str(id_value) if ch.isdigit())
+                    if len(digits_only) != 13:
+                        reason = "주민번호 자리수 오류"
+
+                if reason:
+                    row_display = " | ".join(str(cell) if cell is not None else "" for cell in row)
+                    actual_row_number = source_start_row + row_idx - 1
+                    skipped_info = {
+                        "시트번호": sheet_num,
+                        "시트명": target_sheet,
+                        "원본행": actual_row_number,
+                        "데이터": row,
+                        "사유": reason
+                    }
+                    skipped_rows.append(skipped_info)
+                    print(f"⚠️ [{target_sheet}] 제외 (원본행 {actual_row_number}) 사유: {reason} -> {row_display}")
+                    continue
+
+                if not customer_name or (customer_name and customer_name not in str(account_value)):
+                    row_display = " | ".join(str(cell) if cell is not None else "" for cell in row)
+                    actual_row_number = source_start_row + row_idx - 1
+                    mismatch_reason = "이름 없음" if not customer_name else "계좌 표시명과 불일치"
+                    mismatch_info = {
+                        "시트번호": sheet_num,
+                        "시트명": target_sheet,
+                        "원본행": actual_row_number,
+                        "데이터": row,
+                        "사유": mismatch_reason
+                    }
+                    name_mismatch_rows.append(mismatch_info)
+                    print(f"⚠️ [{target_sheet}] 이름/계좌 확인 필요 (원본행 {actual_row_number}) 사유: {mismatch_reason} -> {row_display}")
+
+                filtered_rows.append(row)
+
+            total_rows += len(filtered_rows)
             processed_data.append({
                 "시트번호": sheet_num,
                 "시트명": target_sheet,
-                "데이터": data
+                "데이터": filtered_rows
             })
             
             # 시트가 없으면 생성
@@ -88,7 +164,7 @@ def update_excel_file(excel_path, sheet_ranges):
                     ws[f"{get_column_letter(col)}{row}"] = None
             
             # 새 데이터 입력
-            for i, row_data in enumerate(data):
+            for i, row_data in enumerate(filtered_rows):
                 for j, value in enumerate(row_data):
                     col = get_column_letter(ord(target_start_col) - ord('A') + 1 + j)
                     ws[f"{col}{target_start_row + i}"] = value
@@ -96,7 +172,7 @@ def update_excel_file(excel_path, sheet_ranges):
         # 변경사항 저장
         wb.save(excel_path)
         logging.info("엑셀 파일 업데이트 완료")
-        return total_rows, processed_data
+        return total_rows, processed_data, skipped_rows, name_mismatch_rows
         
     except Exception as e:
         logging.error(f"엑셀 파일 업데이트 실패: {str(e)}")
@@ -136,7 +212,7 @@ def main():
     ]
     
     try:
-        total_rows, processed_data = update_excel_file(excel_path, sheet_ranges)
+        total_rows, processed_data, skipped_rows, name_mismatch_rows = update_excel_file(excel_path, sheet_ranges)
         
         # 데이터가 있는 시트만 필터링
         valid_data = [data for data in processed_data if data['데이터']]
@@ -152,6 +228,19 @@ def main():
         print("\n=== 작업 완료 보고서 ===")
         print(f"총 처리된 시트 수: {len(valid_data)}")
         print(f"총 처리된 데이터 행 수: {sum(len(data['데이터']) for data in valid_data)}")
+        if skipped_rows:
+            print(f"⚠️ 제외된 행 수: {len(skipped_rows)}")
+            print("\n=== 제외된 행 목록 ===")
+            for skipped in skipped_rows:
+                row_display = " | ".join(str(cell) if cell is not None else "" for cell in skipped['데이터'])
+                print(f"⚠️ [시트 {skipped['시트번호']} - {skipped['시트명']} - 원본행 {skipped['원본행']}] 사유: {skipped['사유']} -> {row_display}")
+
+        if name_mismatch_rows:
+            print(f"\n⚠️ 이름/계좌 확인 필요한 행 수: {len(name_mismatch_rows)}")
+            print("=== 이름-계좌 불일치 목록 ===")
+            for mismatch in name_mismatch_rows:
+                row_display = " | ".join(str(cell) if cell is not None else "" for cell in mismatch['데이터'])
+                print(f"⚠️ [시트 {mismatch['시트번호']} - {mismatch['시트명']} - 원본행 {mismatch['원본행']}] 사유: {mismatch['사유']} -> {row_display}")
         print("\n모든 작업이 성공적으로 완료되었습니다.")
     except Exception as e:
         print(f"작업 중 오류가 발생했습니다: {str(e)}")
