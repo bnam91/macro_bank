@@ -1,5 +1,10 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // readline 인터페이스는 외부에서 전달받음 (중복 생성 방지)
 let rl = null;
@@ -53,7 +58,7 @@ async function savePageHTML(page, filename = null, fallbackPage = null) {
     }
     
     // 파일 경로를 프로젝트 루트로 설정
-    const filePath = path.join(__dirname, filename);
+    const filePath = path.join(__dirname, '..', filename);
     
     let content;
     let pageType;
@@ -117,7 +122,7 @@ function closeInput() {
   }
 }
 
-module.exports = {
+export {
   setReadlineInterface,
   askToContinue,
   savePageHTML,

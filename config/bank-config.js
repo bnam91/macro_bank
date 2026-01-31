@@ -123,7 +123,7 @@ function preprocessAccountInfo(accountInfo) {
   return { bankName: "", accountNumber: "" };
 }
 
-module.exports = {
+export {
   bankOptions,
   standardizeBankName,
   preprocessAccountInfo

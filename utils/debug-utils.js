@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 
 /**
  * 페이지의 HTML 소스와 프레임 정보를 파일로 저장하는 디버깅 유틸리티
@@ -38,7 +38,7 @@ async function debugPage(page, filename = 'page-debug.html') {
   }
 }
 
-module.exports = {
+export {
   debugPage
 };
 

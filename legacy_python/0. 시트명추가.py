@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# 외부 auth 모듈 경로 추가
+AUTH_MODULE_DIR = Path("/Users/a1/Documents/github_cloud/module_auth")
+if str(AUTH_MODULE_DIR) not in sys.path:
+    sys.path.append(str(AUTH_MODULE_DIR))
+
 from auth import get_credentials
 from googleapiclient.discovery import build
 import logging
@@ -37,7 +45,7 @@ def create_query_formula(spreadsheet_id, sheet_names):
         else:
             formatted_name = name
             
-        import_line = f'IMPORTRANGE("https://docs.google.com/spreadsheets/d/{spreadsheet_id}", "{formatted_name}!A1:Z1000")'
+        import_line = f'IMPORTRANGE("https://docs.google.com/spreadsheets/d/{spreadsheet_id}", "{formatted_name}!A1:P1000")'
         
         # 마지막 줄이 아니면 세미콜론 추가
         if i < len(sheet_names) - 1:

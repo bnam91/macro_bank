@@ -1,0 +1,453 @@
+import { google } from "googleapis";
+import path from "path";
+import os from "os";
+import readline from "readline";
+import open from "open";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
+
+// 0. 시트명추가.js 모듈 임포트
+import * as sheetNameModule from "./0. 시트명추가.js";
+
+// 인증 모듈 경로 설정
+const DEFAULT_AUTH_MODULE_PATH = path.join(
+  os.homedir(),
+  "Documents",
+  "github_cloud",
+  "module_auth",
+  "auth.js",
+);
+
+// 홈 경로 확장 함수
+function expandHomePath(inputPath) {
+  if (!inputPath) return inputPath;
+  if (inputPath === "~") return os.homedir();
+  if (inputPath.startsWith("~/")) {
+    return path.join(os.homedir(), inputPath.slice(2));
+  }
+  return inputPath;
+}
+
+// 스프레드시트 ID 추출
+function extractSpreadsheetId(sheetUrlOrId) {
+  if (!sheetUrlOrId) return "";
+  const match = String(sheetUrlOrId).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) return match[1];
+  return String(sheetUrlOrId);
+}
+
+// 시트 이름을 범위 형식으로 변환 (특수문자나 공백이 있으면 작은따옴표로 감싸기)
+function formatSheetRange(sheetName, range) {
+  // 시트 이름에 특수문자, 공백, 한글이 있으면 작은따옴표로 감싸기
+  if (/[^a-zA-Z0-9_]/.test(sheetName)) {
+    return `'${sheetName}'!${range}`;
+  }
+  return `${sheetName}!${range}`;
+}
+
+// 스프레드시트의 첫 번째 시트 이름 가져오기
+async function getFirstSheetName(spreadsheetId, authModulePath) {
+  try {
+    const auth = await getAuthClient(authModulePath);
+    const sheets = google.sheets({ version: "v4", auth });
+    
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId,
+    });
+    
+    const sheetList = spreadsheet.data.sheets || [];
+    if (sheetList.length > 0) {
+      return sheetList[0].properties.title;
+    }
+    return "Sheet1"; // 기본값
+  } catch (error) {
+    console.error(`시트 이름 가져오기 실패: ${error.message}`);
+    return "Sheet1"; // 기본값
+  }
+}
+
+// 인증 클라이언트 가져오기
+async function getAuthClient(authModulePath) {
+  const resolvedPath = expandHomePath(authModulePath || DEFAULT_AUTH_MODULE_PATH);
+  let getCredentials;
+  try {
+    // ESM에서 CommonJS 모듈을 동적으로 로드하기 위해 createRequire 사용
+    const require = createRequire(import.meta.url);
+    ({ getCredentials } = require(resolvedPath));
+  } catch (error) {
+    throw new Error(`인증 모듈을 불러오지 못했습니다: ${resolvedPath} (${error.message})`);
+  }
+
+  if (typeof getCredentials !== "function") {
+    throw new Error("인증 모듈에 getCredentials 함수가 없습니다.");
+  }
+
+  return getCredentials();
+}
+
+// Google Sheets에서 데이터 가져오기
+async function getDataFromSheets(spreadsheetId, sheetName, range, authModulePath) {
+  const fullRange = formatSheetRange(sheetName, range);
+  console.log(`스프레드시트에서 데이터 가져오기 시작: ${fullRange}`);
+  try {
+    const auth = await getAuthClient(authModulePath);
+    const sheets = google.sheets({ version: "v4", auth });
+
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: fullRange,
+    });
+
+    const values = result.data.values || [];
+    
+    // 빈 행 제거 (모든 셀이 비어있거나 공백만 있는 행)
+    const nonEmptyRows = values.filter(row => {
+      if (!row || row.length === 0) return false;
+      return row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== "");
+    });
+
+    // 데이터 전처리: 쉼표 제거
+    const processedValues = nonEmptyRows.map((row) =>
+      row.map((cell) => {
+        if (typeof cell === "string") {
+          return cell.replace(/,/g, "");
+        }
+        return cell;
+      })
+    );
+
+    console.log(`데이터 가져오기 성공: ${processedValues.length} rows (원본: ${values.length} rows, 빈 행 제외: ${values.length - nonEmptyRows.length} rows)`);
+    return processedValues;
+  } catch (error) {
+    console.error(`데이터 가져오기 실패: ${error.message}`);
+    // 범위가 비어있을 때의 에러는 무시하고 빈 배열 반환
+    if (error.message.includes("Unable to parse range") || error.message.includes("No data")) {
+      console.log(`  ⚠️ 범위가 비어있거나 파싱할 수 없습니다. 빈 배열을 반환합니다.`);
+      return [];
+    }
+    throw error;
+  }
+}
+
+// 계좌번호 전처리: 괄호 제거 후 숫자, 영문, 한글, '-', 공백만 허용
+function cleanAccountNumber(accountText) {
+  if (!accountText || typeof accountText !== "string") return "";
+  
+  // 괄호 제거
+  let cleaned = accountText.replace(/[()]/g, "");
+  
+  // 허용된 문자만 남기기
+  const cleanedChars = [];
+  for (const ch of cleaned) {
+    if (ch.match(/[0-9a-zA-Z\-\s]/)) {
+      cleanedChars.push(ch);
+    } else {
+      // 한글 체크
+      const code = ch.charCodeAt(0);
+      if (code >= 0xac00 && code <= 0xd7a3) {
+        cleanedChars.push(ch);
+      }
+    }
+  }
+  
+  return cleanedChars.join("").trim();
+}
+
+// Google Sheets에 데이터 쓰기 (헤더 포함)
+async function writeDataToSheets(
+  spreadsheetId,
+  sheetName,
+  header,
+  data,
+  authModulePath
+) {
+  console.log(`스프레드시트에 데이터 쓰기 시작: ${sheetName}`);
+  try {
+    const auth = await getAuthClient(authModulePath);
+    const sheets = google.sheets({ version: "v4", auth });
+
+    // 헤더와 데이터를 합쳐서 작성
+    const allData = [];
+    if (header && header.length > 0) {
+      allData.push(header);
+    }
+    allData.push(...data);
+
+    // 전체 범위에 쓰기 (헤더 포함)
+    if (allData.length > 0) {
+      const rangeToWrite = formatSheetRange(sheetName, "A1");
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: rangeToWrite,
+        valueInputOption: "RAW",
+        resource: {
+          values: allData,
+        },
+      });
+    }
+
+    console.log(`스프레드시트에 데이터 쓰기 완료: 헤더 1행 + 데이터 ${data.length}행`);
+  } catch (error) {
+    console.error(`스프레드시트에 데이터 쓰기 실패: ${error.message}`);
+    throw error;
+  }
+}
+
+// 메인 처리 함수
+async function updateSheetData(sourceSpreadsheetId, targetSpreadsheetId, sheetRanges, authModulePath) {
+  const processedData = [];
+  const skippedRows = [];
+  const nameMismatchRows = [];
+  let totalRows = 0;
+  let header = null;
+
+  try {
+    // 소스 스프레드시트의 첫 번째 시트 이름 가져오기
+    const sourceSheetName = await getFirstSheetName(sourceSpreadsheetId, authModulePath);
+    console.log(`소스 시트 이름: ${sourceSheetName}`);
+
+    // 헤더 가져오기 (E1:K1)
+    console.log("헤더 가져오기 중...");
+    const headerData = await getDataFromSheets(
+      sourceSpreadsheetId,
+      sourceSheetName,
+      "E1:K1",
+      authModulePath
+    );
+    if (headerData.length > 0) {
+      header = headerData[0];
+      // 헤더도 7열로 맞추기
+      while (header.length < 7) {
+        header.push("");
+      }
+    }
+
+    // 모든 범위에서 데이터 수집
+    for (let sheetNum = 0; sheetNum < sheetRanges.length; sheetNum++) {
+      const sourceRange = sheetRanges[sheetNum];
+      console.log(`시트 범위 ${sheetNum + 1} 처리 중... (${sourceRange})`);
+
+      const data = await getDataFromSheets(
+        sourceSpreadsheetId,
+        sourceSheetName,
+        sourceRange,
+        authModulePath
+      );
+
+      if (data.length === 0) {
+        console.log(`  ⚠️ 범위 ${sourceRange}에 데이터가 없습니다.`);
+        continue;
+      }
+
+      console.log(`  ✓ 범위 ${sourceRange}에서 ${data.length}개 행 발견`);
+
+      const sourceStartRow = parseInt(sourceRange.split(":")[0].match(/\d+/)[0]);
+
+      for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
+        const row = [...data[rowIdx]];
+
+        // 행 길이 보정 (최소 7열)
+        while (row.length < 7) {
+          row.push("");
+        }
+
+        // 고객명 추출 (B열, 인덱스 1)
+        const customerName = row[1] ? String(row[1]).trim() : "";
+
+        // 계좌번호 전처리 (E열, 인덱스 4)
+        if (row[4] && typeof row[4] === "string") {
+          row[4] = cleanAccountNumber(row[4]);
+        }
+
+        // 검증
+        let reason = null;
+        const accountValue = row[4] ? String(row[4]).trim() : "";
+
+        // 계좌번호 검증
+        if (!accountValue) {
+          reason = "계좌번호 없음";
+        }
+
+        // 주민번호 자리수 검증 (F열, 인덱스 5)
+        if (!reason) {
+          const idValue = row[5] ? String(row[5]) : "";
+          const digitsOnly = idValue.replace(/\D/g, "");
+          if (digitsOnly.length !== 13) {
+            reason = "주민번호 자리수 오류";
+          }
+        }
+
+        const actualRowNumber = sourceStartRow + rowIdx;
+
+        // 제외된 행 처리
+        if (reason) {
+          const rowDisplay = row.map((cell) => (cell !== null && cell !== undefined ? String(cell) : "")).join(" | ");
+          skippedRows.push({
+            시트번호: sheetNum + 1,
+            원본행: actualRowNumber,
+            데이터: row,
+            사유: reason,
+          });
+          console.log(
+            `⚠️ [범위 ${sheetNum + 1}] 제외 (원본행 ${actualRowNumber}) 사유: ${reason} -> ${rowDisplay}`
+          );
+          continue;
+        }
+
+        // 이름-계좌 일치 확인
+        if (!customerName || (customerName && !String(accountValue).includes(customerName))) {
+          const rowDisplay = row.map((cell) => (cell !== null && cell !== undefined ? String(cell) : "")).join(" | ");
+          const mismatchReason = !customerName ? "이름 없음" : "계좌 표시명과 불일치";
+          nameMismatchRows.push({
+            시트번호: sheetNum + 1,
+            원본행: actualRowNumber,
+            데이터: row,
+            사유: mismatchReason,
+          });
+          console.log(
+            `⚠️ [범위 ${sheetNum + 1}] 이름/계좌 확인 필요 (원본행 ${actualRowNumber}) 사유: ${mismatchReason} -> ${rowDisplay}`
+          );
+        }
+
+        // 유효한 데이터 추가
+        processedData.push(row);
+      }
+    }
+
+    totalRows = processedData.length;
+
+    // 대상 스프레드시트의 첫 번째 시트 이름 가져오기
+    const targetSheetName = await getFirstSheetName(targetSpreadsheetId, authModulePath);
+    console.log(`대상 시트 이름: ${targetSheetName}`);
+
+    // 대상 스프레드시트에 일괄 쓰기 (헤더 포함)
+    if (processedData.length > 0 || header) {
+      await writeDataToSheets(
+        targetSpreadsheetId,
+        targetSheetName,
+        header || [],
+        processedData,
+        authModulePath
+      );
+    }
+
+    console.log("데이터 업데이트 완료");
+    return { totalRows, processedData, skippedRows, nameMismatchRows };
+  } catch (error) {
+    console.error(`데이터 업데이트 실패: ${error.message}`);
+    throw error;
+  }
+}
+
+// 사용자 입력을 Promise로 변환
+function question(prompt) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+// 메인 함수
+async function main() {
+  try {
+    // 0. 시트명추가.js 작업 먼저 실행
+    console.log("\n=== 시트명 추가 작업 시작 ===");
+    await sheetNameModule.main();
+    console.log("=== 시트명 추가 작업 완료 ===\n");
+
+    // 사용자에게 스프레드시트를 열지 물어보기
+    const openSheets = await question("입금요청 내역과 현황판을 함께 열까요? (y/n): ");
+    
+    if (openSheets.trim().toLowerCase() === "y") {
+      await open("https://docs.google.com/spreadsheets/d/1NOP5_s0gNUCWaGIgMo5WZmtqBbok_5a4XdpNVwu8n5c/edit?gid=0#gid=0");
+      await open("https://docs.google.com/spreadsheets/d/1CK2UXTy7HKjBe2T0ovm5hfzAAKZxZAR_ev3cbTPOMPs/edit?gid=1565864271#gid=1565864271");
+    }
+
+    // 소스 스프레드시트 ID
+    const sourceSpreadsheetId = "1NOP5_s0gNUCWaGIgMo5WZmtqBbok_5a4XdpNVwu8n5c";
+
+    // 대상 스프레드시트 ID
+    const targetSpreadsheetUrl = "https://docs.google.com/spreadsheets/d/1EKRG7IF9UA7tCRfgg_qykAVnK00vonCKe2LJLAwiUvI/edit?gid=0#gid=0";
+    const targetSpreadsheetId = extractSpreadsheetId(targetSpreadsheetUrl);
+
+    // 시트 범위 매핑 (10개 범위를 일괄 처리)
+    const sheetRanges = [
+      "E2:K11",
+      "E12:K21",
+      "E22:K31",
+      "E32:K41",
+      "E42:K51",
+      "E52:K61",
+      "E62:K71",
+      "E72:K81",
+      "E82:K91",
+      "E92:K101",
+    ];
+
+    const { totalRows, processedData, skippedRows, nameMismatchRows } =
+      await updateSheetData(
+        sourceSpreadsheetId,
+        targetSpreadsheetId,
+        sheetRanges
+      );
+
+    // 결과 출력
+    console.log("\n=== 상세 데이터 ===");
+    if (processedData.length > 0) {
+      console.log(`\n[처리된 데이터]`);
+      processedData.forEach((row, idx) => {
+        console.log(`  ${idx + 1}. ${row.map((cell) => String(cell || "")).join(" | ")}`);
+      });
+    }
+
+    console.log("\n=== 작업 완료 보고서 ===");
+    console.log(`총 처리된 데이터 행 수: ${totalRows}`);
+    
+    if (skippedRows.length > 0) {
+      console.log(`\n⚠️ 제외된 행 수: ${skippedRows.length}`);
+      console.log("=== 제외된 행 목록 ===");
+      skippedRows.forEach((skipped) => {
+        const rowDisplay = skipped.데이터.map((cell) => (cell !== null && cell !== undefined ? String(cell) : "")).join(" | ");
+        console.log(
+          `⚠️ [범위 ${skipped.시트번호} - 원본행 ${skipped.원본행}] 사유: ${skipped.사유} -> ${rowDisplay}`
+        );
+      });
+    }
+
+    if (nameMismatchRows.length > 0) {
+      console.log(`\n⚠️ 이름/계좌 확인 필요한 행 수: ${nameMismatchRows.length}`);
+      console.log("=== 이름-계좌 불일치 목록 ===");
+      nameMismatchRows.forEach((mismatch) => {
+        const rowDisplay = mismatch.데이터.map((cell) => (cell !== null && cell !== undefined ? String(cell) : "")).join(" | ");
+        console.log(
+          `⚠️ [범위 ${mismatch.시트번호} - 원본행 ${mismatch.원본행}] 사유: ${mismatch.사유} -> ${rowDisplay}`
+        );
+      });
+    }
+
+    console.log("\n모든 작업이 성공적으로 완료되었습니다.");
+  } catch (error) {
+    console.error(`작업 중 오류가 발생했습니다: ${error.message}`);
+    console.error(error.stack);
+    process.exit(1);
+  }
+}
+
+// ESM에서 직접 실행 여부 확인
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main();
+}
+
+export {
+  updateSheetData,
+  getDataFromSheets,
+  writeDataToSheets,
+};

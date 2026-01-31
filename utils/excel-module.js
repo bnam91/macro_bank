@@ -1,5 +1,5 @@
 const XLSX = require('xlsx');
-const { preprocessAccountInfo } = require('./bank-config');
+const { preprocessAccountInfo } = require('../config/bank-config');
 
 /**
  * 엑셀 데이터를 읽고 전처리된 배열을 반환합니다.

@@ -1,7 +1,7 @@
-const { bankOptions } = require('./bank-config');
-const { handleUserInput } = require('./user-input-module');
-const { executeCertLogin } = require('./cert-module');
-const { loadExcelData } = require('./excel-module');
+import { bankOptions } from '../config/bank-config.js';
+import { handleUserInput } from './user-input-module.js';
+import { executeCertLogin } from './cert-module.js';
+import { loadSheetTransferData } from "./google-sheet-module.js";
 
 // 프레임 전환
 async function switchToFrame(page, frameId) {
@@ -401,14 +401,18 @@ async function clickTransferButton(page) {
   }
 }
 
-// 메인 페이지 팝업 확인 및 처리 (최대 10초)
+// 메인 페이지 팝업 확인 및 처리 (최대 15초)
 async function checkAndCloseMainPagePopup(page) {
   try {
-    console.log("메인 페이지 팝업 확인 중... (최대 10초)");
+    console.log("메인 페이지 팝업 확인 중... (최대 15초)");
     
-    const maxWaitTime = 10; // 최대 10초
+    const maxWaitTime = 15; // 최대 15초
     
     for (let i = 0; i < maxWaitTime; i++) {
+      const remainingTime = maxWaitTime - i;
+      // 같은 줄에 카운트다운 표시 (업데이트)
+      process.stdout.write(`\r⏳ 팝업 확인 중... 남은 시간: ${remainingTime}초`);
+      
       await page.waitForTimeout(1000); // 1초마다 확인
       
       // 팝업 컨테이너 선택자 (제공된 구조에 맞춤)
@@ -454,6 +458,8 @@ async function checkAndCloseMainPagePopup(page) {
             }, popup);
             
             if (isVisible) {
+                // 카운트다운 줄 정리 후 팝업 발견 메시지 출력
+                process.stdout.write('\r' + ' '.repeat(50) + '\r');
                 console.log(`팝업 발견: ${popupSelector}`);
               popupFound = true;
               
@@ -485,6 +491,8 @@ async function checkAndCloseMainPagePopup(page) {
                       }, popup);
                       
                       if (!stillVisible) {
+                        // 카운트다운 줄 정리
+                        process.stdout.write('\r' + ' '.repeat(50) + '\r');
                         console.log("팝업이 닫혔습니다.");
                         return true;
                       }
@@ -512,6 +520,8 @@ async function checkAndCloseMainPagePopup(page) {
                   }, popup);
                   
                   if (!stillVisible) {
+                    // 카운트다운 줄 정리
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
                     console.log("ESC 키로 팝업 닫기 성공");
                     return true;
                   }
@@ -529,6 +539,8 @@ async function checkAndCloseMainPagePopup(page) {
                       el.style.visibility = 'hidden';
                     }
                   }, popup);
+                  // 카운트다운 줄 정리
+                  process.stdout.write('\r' + ' '.repeat(50) + '\r');
                   console.log("팝업을 강제로 숨김");
                   await page.waitForTimeout(500);
                   return true;
@@ -556,12 +568,150 @@ async function checkAndCloseMainPagePopup(page) {
       }
     }
     
-    console.log("10초 동안 팝업이 나타나지 않았습니다. 이체 메뉴 클릭을 진행합니다.");
+    // 카운트다운 줄 정리
+    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+    console.log("15초 동안 팝업이 나타나지 않았습니다. 이체 메뉴 클릭을 진행합니다.");
     return true; // 팝업이 없어도 정상 진행
   } catch (error) {
+    // 카운트다운 줄 정리
+    process.stdout.write('\r' + ' '.repeat(50) + '\r');
     console.log(`메인 페이지 팝업 확인 중 오류: ${error.message}`);
     // 오류가 발생해도 계속 진행
     return true;
+  }
+}
+
+// 단말기 미지정 PC이용 안내 팝업 감지 및 처리
+async function checkAndHandleDevicePopup(page) {
+  try {
+    console.log("\n단말기 미지정 PC이용 안내 팝업 확인 중...");
+    
+    const maxWaitTime = 5; // 최대 5초 동안 확인
+    
+    for (let i = 0; i < maxWaitTime; i++) {
+      await page.waitForTimeout(1000);
+      
+      // 팝업 선택자들 (메인 페이지와 프레임 모두 확인)
+      const popupSelectors = [
+        'div.pop_ty01.pop_ty05.unpc_1',
+        '.pop_ty01.pop_ty05.unpc_1',
+        '.unpc_1',
+        'div[class*="unpc_1"]'
+      ];
+      
+      // 모든 컨텍스트에서 팝업 찾기 (메인 페이지 + 모든 프레임)
+      const contexts = [page, ...page.frames()];
+      
+      for (const context of contexts) {
+        for (const popupSelector of popupSelectors) {
+          try {
+            const popup = await context.$(popupSelector);
+            if (popup) {
+              const isVisible = await context.evaluate((el) => {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                return style.display !== 'none' && 
+                       style.visibility !== 'hidden' && 
+                       el.offsetParent !== null;
+              }, popup);
+              
+              if (isVisible) {
+                // 팝업 제목 확인
+                const title = await context.evaluate((el) => {
+                  const h4 = el.querySelector('h4');
+                  return h4 ? h4.textContent.trim() : '';
+                }, popup);
+                
+                if (title.includes('단말기 미지정 PC이용 안내')) {
+                  console.log("✅ 단말기 미지정 PC이용 안내 팝업 감지됨");
+                  
+                  // 팝업 닫기 시도
+                  let closed = false;
+                  
+                  // 방법 1: 닫기 버튼 클릭 (onclick으로 닫기)
+                  try {
+                    const closeButton = await popup.$('a[onclick*="closeLayer_fnc(\'commonInfoPopup\')"]');
+                    if (closeButton) {
+                      await closeButton.click();
+                      await page.waitForTimeout(500);
+                      closed = true;
+                      console.log("팝업 닫기 버튼 클릭 성공");
+                    }
+                  } catch (e) {
+                    // 닫기 버튼을 찾지 못함
+                  }
+                  
+                  // 방법 2: JavaScript로 직접 닫기 함수 호출
+                  if (!closed) {
+                    try {
+                      await context.evaluate(() => {
+                        if (typeof opb !== 'undefined' && 
+                            opb.common && 
+                            opb.common.layerpopup && 
+                            opb.common.layerpopup.closeLayer_fnc) {
+                          opb.common.layerpopup.closeLayer_fnc('commonInfoPopup');
+                        }
+                      });
+                      await page.waitForTimeout(500);
+                      closed = true;
+                      console.log("JavaScript로 팝업 닫기 성공");
+                    } catch (e) {
+                      console.log(`JavaScript로 팝업 닫기 실패: ${e.message}`);
+                    }
+                  }
+                  
+                  // 방법 3: 팝업을 강제로 숨기기
+                  if (!closed) {
+                    try {
+                      await context.evaluate((el) => {
+                        if (el) {
+                          el.style.display = 'none';
+                          el.style.visibility = 'hidden';
+                        }
+                      }, popup);
+                      await page.waitForTimeout(500);
+                      closed = true;
+                      console.log("팝업을 강제로 숨김");
+                    } catch (e) {
+                      console.log(`팝업 숨기기 실패: ${e.message}`);
+                    }
+                  }
+                  
+                  // 팝업이 닫혔는지 확인
+                  if (closed) {
+                    await page.waitForTimeout(500);
+                    const stillVisible = await context.evaluate((el) => {
+                      if (!el) return false;
+                      const style = window.getComputedStyle(el);
+                      return style.display !== 'none' && 
+                             style.visibility !== 'hidden' && 
+                             el.offsetParent !== null;
+                    }, popup);
+                    
+                    if (!stillVisible) {
+                      console.log("✅ 팝업이 닫혔습니다.");
+                      return true; // 팝업이 감지되고 닫혔음
+                    }
+                  }
+                  
+                  // 팝업이 여전히 보이면 사용자에게 확인
+                  return true; // 팝업 감지됨
+                }
+              }
+            }
+          } catch (e) {
+            // 이 선택자로 팝업을 찾지 못함
+            continue;
+          }
+        }
+      }
+    }
+    
+    // 팝업이 나타나지 않음
+    return false;
+  } catch (error) {
+    console.log(`단말기 미지정 팝업 확인 중 오류: ${error.message}`);
+    return false;
   }
 }
 
@@ -619,7 +769,7 @@ async function handleVoicePhishingPopup(page) {
 }
 
 // 메인 이체 프로세스 실행
-async function executeTransferProcess(page, excelPath, autoTransfer = false) {
+async function executeTransferProcess(page, sheetConfig, autoTransfer = false) {
   try {
     console.log("\n=== 이체 프로세스 시작 ===");
 
@@ -660,15 +810,39 @@ async function executeTransferProcess(page, excelPath, autoTransfer = false) {
       return false;
     }
 
+    // 6. 단말기 미지정 PC이용 안내 팝업 확인 및 처리
+    const devicePopupDetected = await checkAndHandleDevicePopup(page);
+    if (devicePopupDetected) {
+      console.log("\n단말기 미지정 PC이용 안내 팝업이 감지되어 닫았습니다.");
+      
+      // 사용자에게 계속 진행할지 묻기
+      const frame = await switchToFrame(page, "hanaMainframe");
+      const shouldContinue = await handleUserInput(
+        frame,
+        "\n팝업을 닫았습니다. 계속 진행할까요? (y/d/n): ",
+        page
+      );
+      
+      if (!shouldContinue) {
+        console.log("사용자가 진행을 중단했습니다.");
+        return false;
+      }
+    }
+
     // 7. 스크롤 조정
     await adjustScroll(page);
 
-    // 8. 엑셀 데이터 로드
-    const processedData = loadExcelData(excelPath);
+    // 8. 구글 시트 데이터 로드
+    const processedData = await loadSheetTransferData(sheetConfig);
     console.log("\n전처리된 데이터:");
     processedData.forEach((data, idx) => {
       console.log(`${idx + 1}. 은행: ${data.bank}, 계좌번호: ${data.accountNumber}, 이름.제품명: ${data.nameProduct}, 제품명: ${data.productName}, 금액: ${data.amount}`);
     });
+
+    if (processedData.length === 0) {
+      console.log("가져온 이체 데이터가 없습니다. 시트 내용을 확인해주세요.");
+      return false;
+    }
 
     // 8. 이체 정보 입력 (최대 10개)
     for (let i = 0; i < Math.min(processedData.length, 10); i++) {
@@ -696,7 +870,7 @@ async function executeTransferProcess(page, excelPath, autoTransfer = false) {
   }
 }
 
-module.exports = {
+export {
   executeTransferProcess,
   clickTransferMenu,
   clickMultiTransferButton,

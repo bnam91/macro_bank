@@ -380,4 +380,3 @@ process.on('SIGINT', async () => {
 });
 
 openCoupang();
-
