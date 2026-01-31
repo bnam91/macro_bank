@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { executeTransferProcess } from './modules/transfer-module.js';
 import { setReadlineInterface } from './modules/user-input-module.js';
+import { loadSheetTransferData } from './modules/google-sheet-module.js';
 import config from './config/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -266,10 +267,60 @@ async function openCoupang() {
   let browser;
   
   try {
-    // 사용자 프로필 경로 설정 (config.txt에서 읽기)
+    // 1단계: 구글 시트 선택 (프로필 선택 전에 먼저 수행)
+    console.log("📋 시트를 먼저 선택합니다.\n");
+    const sheetConfig = await selectSheet();
+    if (!sheetConfig) {
+      console.log("시트를 선택할 수 없습니다. 프로그램을 종료합니다.");
+      rl.close();
+      return;
+    }
+    
+    const { sheetUrl, sheetName, columnMapping } = sheetConfig;
+    console.log(`\n선택된 시트 정보:`);
+    console.log(`- 시트 URL: ${sheetUrl}`);
+    console.log(`- 시트명: ${sheetName}\n`);
+
+    // 2단계: 선택한 시트에서 데이터 미리 읽어오기
+    console.log("📥 시트 데이터를 미리 읽어옵니다...\n");
+    const authModulePath = path.join(
+      os.homedir(),
+      "Documents",
+      "github_cloud",
+      "module_auth",
+      "auth.js"
+    );
+    
+    let transferData = [];
+    try {
+      transferData = await loadSheetTransferData({
+        sheetUrl,
+        sheetName,
+        authModulePath,
+        columnMapping
+      });
+      
+      console.log(`✅ 총 ${transferData.length}개의 이체 데이터를 읽어왔습니다.\n`);
+      
+      if (transferData.length > 0) {
+        console.log("📋 읽어온 이체 데이터 목록:");
+        transferData.forEach((item, index) => {
+          console.log(`${index + 1}. ${item.nameProduct || '이름없음'} - ${item.bank} ${item.accountNumber} - ${item.amount?.toLocaleString() || 0}원`);
+        });
+        console.log("");
+      } else {
+        console.log("⚠️ 읽어올 이체 데이터가 없습니다.\n");
+      }
+    } catch (error) {
+      console.error(`❌ 시트 데이터 읽기 실패: ${error.message}`);
+      console.log("프로그램을 종료합니다.");
+      rl.close();
+      return;
+    }
+
+    // 3단계: 사용자 프로필 경로 설정 및 프로필 선택
     const userDataParent = readPathFromFile();
     
-    // 프로필 선택
     const selectedProfile = await selectProfile(userDataParent);
     if (!selectedProfile) {
       console.log("프로필을 선택할 수 없습니다. 프로그램을 종료합니다.");
@@ -333,21 +384,9 @@ async function openCoupang() {
 
     // 다계좌이체진행 자동 처리 (개발 중이므로 n으로 설정)
     const autoTransfer = false;
-    console.log("🟠다계좌이체진행(자동): 자동으로 n으로 처리합니다. (개발 중)");
+    console.log("🟠다계좌이체진행(자동): 자동으로 n으로 처리합니다. (개발 중)\n");
 
-    // 구글 시트 선택
-    const sheetConfig = await selectSheet();
-    if (!sheetConfig) {
-      console.log("시트를 선택할 수 없습니다. 프로그램을 종료합니다.");
-      rl.close();
-      return;
-    }
-    
-    const { sheetUrl, sheetName, columnMapping } = sheetConfig;
-    console.log(`시트 URL: ${sheetUrl}`);
-    console.log(`시트명: ${sheetName}\n`);
-
-    // 이체 프로세스 실행
+    // 4단계: 이미 읽어온 데이터로 이체 프로세스 실행
     await executeTransferProcess(
       newPage,
       { sheetUrl, sheetName, columnMapping },

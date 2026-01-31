@@ -33,7 +33,7 @@ const config = {
     {
       name: '고야_입금요청내역',
       url: 'https://docs.google.com/spreadsheets/d/1NOP5_s0gNUCWaGIgMo5WZmtqBbok_5a4XdpNVwu8n5c/edit?gid=0#gid=0',
-      sheetName: '2. 실시간_입금요청내역',
+      sheetName: '시트1',
       // 열 매핑 (인덱스 기준, 0부터 시작)
       columnMapping: {
         productName: 4,    // E열: 제품
