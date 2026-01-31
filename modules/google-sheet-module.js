@@ -232,6 +232,7 @@ async function buildTransferData(rows, columnMapping, sheetConfig) {
       nameProduct,
       productName,
       amount,
+      rowIndex: i, // 원본 시트의 행 인덱스 저장 (헤더 제외, 0부터 시작)
     });
   }
 
@@ -260,4 +261,5 @@ async function loadSheetTransferData({ sheetUrl, sheetName, authModulePath, colu
 export {
   loadSheetTransferData,
   extractSpreadsheetId,
+  updateSheetValue,
 };

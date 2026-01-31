@@ -114,6 +114,23 @@ async function handleUserInput(page, message = "다음 프로세스를 진행할
 }
 
 /**
+ * 사용자에게 엔터 입력을 기다리는 함수
+ * @param {string} message - 사용자에게 보여줄 메시지
+ * @returns {Promise<void>}
+ */
+function waitForEnter(message = "계속하려면 엔터를 누르세요...") {
+  if (!rl) {
+    throw new Error('readline 인터페이스가 설정되지 않았습니다. setReadlineInterface를 먼저 호출하세요.');
+  }
+  
+  return new Promise((resolve) => {
+    rl.question(message, () => {
+      resolve();
+    });
+  });
+}
+
+/**
  * readline 인터페이스 종료
  */
 function closeInput() {
@@ -127,6 +144,7 @@ export {
   askToContinue,
   savePageHTML,
   handleUserInput,
+  waitForEnter,
   closeInput
 };
 
