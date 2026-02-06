@@ -75,6 +75,28 @@ async function fetchSheetValues({ sheetUrl, sheetName, authModulePath, range }) 
   return res.data.values || [];
 }
 
+// 시트에서 특정 셀의 값을 읽어오는 함수
+async function getSheetValue({ sheetUrl, sheetName, authModulePath, rowIndex, columnIndex }) {
+  const spreadsheetId = extractSpreadsheetId(sheetUrl);
+  if (!spreadsheetId) {
+    throw new Error("스프레드시트 ID를 확인할 수 없습니다.");
+  }
+
+  const auth = await getAuthClient(authModulePath);
+  const sheets = google.sheets({ version: "v4", auth });
+  
+  // 열 인덱스를 알파벳으로 변환 (0=A, 1=B, ..., 16=Q)
+  const columnLetter = String.fromCharCode(65 + columnIndex); // A=65
+  const range = `${sheetName}!${columnLetter}${rowIndex + 1}`; // +1은 시트 행 번호가 1부터 시작하므로
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: range,
+  });
+
+  return res.data.values && res.data.values[0] ? res.data.values[0][0] : null;
+}
+
 // 시트에 값 쓰기 함수
 async function updateSheetValue({ sheetUrl, sheetName, authModulePath, rowIndex, columnIndex, value }) {
   const spreadsheetId = extractSpreadsheetId(sheetUrl);
@@ -262,4 +284,6 @@ export {
   loadSheetTransferData,
   extractSpreadsheetId,
   updateSheetValue,
+  getSheetValue,
+  fetchSheetValues,
 };

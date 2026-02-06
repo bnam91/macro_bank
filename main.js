@@ -8,8 +8,8 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { executeTransferProcess } from './modules/transfer-module.js';
 import { setReadlineInterface } from './modules/user-input-module.js';
-import { loadSheetTransferData } from './modules/google-sheet-module.js';
 import config from './config/config.js';
+import { main as addSheetNames } from './scripts/add-sheet-names.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -267,66 +267,29 @@ async function openCoupang() {
   let browser;
   
   try {
-    // 1단계: 구글 시트 선택 (프로필 선택 전에 먼저 수행)
-    console.log("📋 시트를 먼저 선택합니다.\n");
-    const sheetConfig = await selectSheet();
-    if (!sheetConfig) {
-      console.log("시트를 선택할 수 없습니다. 프로그램을 종료합니다.");
-      rl.close();
-      return;
-    }
-    
-    const { sheetUrl, sheetName, columnMapping } = sheetConfig;
-    console.log(`\n선택된 시트 정보:`);
-    console.log(`- 시트 URL: ${sheetUrl}`);
-    console.log(`- 시트명: ${sheetName}\n`);
-
-    // 2단계: 선택한 시트에서 데이터 미리 읽어오기
-    console.log("📥 시트 데이터를 미리 읽어옵니다...\n");
-    const authModulePath = path.join(
-      os.homedir(),
-      "Documents",
-      "github_cloud",
-      "module_auth",
-      "auth.js"
-    );
-    
-    let transferData = [];
+    // 시트명 추가 스크립트 먼저 실행
+    console.log("📋 시트명 추가 스크립트 실행 중...\n");
     try {
-      transferData = await loadSheetTransferData({
-        sheetUrl,
-        sheetName,
-        authModulePath,
-        columnMapping
-      });
-      
-      console.log(`✅ 총 ${transferData.length}개의 이체 데이터를 읽어왔습니다.\n`);
-      
-      if (transferData.length > 0) {
-        console.log("📋 읽어온 이체 데이터 목록:");
-        transferData.forEach((item, index) => {
-          console.log(`${index + 1}. ${item.nameProduct || '이름없음'} - ${item.bank} ${item.accountNumber} - ${item.amount?.toLocaleString() || 0}원`);
-        });
-        console.log("");
-      } else {
-        console.log("⚠️ 읽어올 이체 데이터가 없습니다.\n");
-      }
+      await addSheetNames();
+      console.log("\n✅ 시트명 추가 완료\n");
     } catch (error) {
-      console.error(`❌ 시트 데이터 읽기 실패: ${error.message}`);
-      console.log("프로그램을 종료합니다.");
-      rl.close();
-      return;
+      console.error(`⚠️ 시트명 추가 중 오류 발생: ${error.message}`);
+      console.log("계속 진행합니다...\n");
     }
-
-    // 3단계: 사용자 프로필 경로 설정 및 프로필 선택
+    
+    // 사용자 프로필 경로 설정 (config.txt에서 읽기)
     const userDataParent = readPathFromFile();
     
-    const selectedProfile = await selectProfile(userDataParent);
-    if (!selectedProfile) {
-      console.log("프로필을 선택할 수 없습니다. 프로그램을 종료합니다.");
+    // 프로필 선택 (하드코딩: 첫 번째 프로필 자동 선택)
+    const profiles = await getAvailableProfiles(userDataParent);
+    if (profiles.length === 0) {
+      console.log("사용 가능한 프로필이 없습니다. 프로그램을 종료합니다.");
       rl.close();
       return;
     }
+    const selectedProfile = profiles[0]; // 첫 번째 프로필 자동 선택
+    const displayName = removeGooglePrefix(selectedProfile);
+    console.log(`\n선택된 프로필: ${displayName} (자동 선택)`);
     
     const userDataDir = path.join(userDataParent, selectedProfile);
     
@@ -347,7 +310,7 @@ async function openCoupang() {
       defaultViewport: null,
       userDataDir: userDataDir,
       args: [
-        '--start-maximized',
+        '--window-size=960,720', // half 사이즈 (일반적인 화면 크기의 절반)
         '--no-sandbox',
         '--disable-blink-features=AutomationControlled',
         // 캐시 크기 제한 (100MB로 제한)
@@ -373,6 +336,9 @@ async function openCoupang() {
     // 첫 번째 페이지 사용
     const pages = await browser.pages();
     const page = pages[0];
+    
+    // 창 크기를 화면의 절반 크기로 설정
+    await page.setViewport({ width: 960, height: 720 });
 
     // 구글로 이동
     await page.goto('https://www.google.com');
@@ -384,9 +350,41 @@ async function openCoupang() {
 
     // 다계좌이체진행 자동 처리 (개발 중이므로 n으로 설정)
     const autoTransfer = false;
-    console.log("🟠다계좌이체진행(자동): 자동으로 n으로 처리합니다. (개발 중)\n");
+    console.log("🟠다계좌이체진행(자동): 자동으로 n으로 처리합니다. (개발 중)");
 
-    // 4단계: 이미 읽어온 데이터로 이체 프로세스 실행
+    // 구글 시트 선택 (config.js의 defaultSheetName 사용)
+    const sheets = config.sheets;
+    let selectedSheet = sheets.find(sheet => sheet.name === config.defaultSheetName);
+    
+    if (!selectedSheet) {
+      // 기본 시트가 없으면 첫 번째 시트 선택
+      if (sheets.length === 0) {
+        console.log("사용 가능한 시트가 없습니다. 프로그램을 종료합니다.");
+        rl.close();
+        return;
+      }
+      selectedSheet = sheets[0];
+      console.log(`⚠️ 기본 시트 '${config.defaultSheetName}'를 찾을 수 없어 첫 번째 시트를 선택했습니다.`);
+    }
+    
+    const sheetConfig = {
+      sheetUrl: selectedSheet.url,
+      sheetName: selectedSheet.sheetName,
+      columnMapping: selectedSheet.columnMapping || {
+        productName: 4,
+        customerName: 5,
+        accountInfo: 8,
+        amount: 10
+      }
+    };
+    
+    console.log(`\n선택된 시트: ${selectedSheet.name} (자동 선택)`);
+    
+    const { sheetUrl, sheetName, columnMapping } = sheetConfig;
+    console.log(`시트 URL: ${sheetUrl}`);
+    console.log(`시트명: ${sheetName}\n`);
+
+    // 이체 프로세스 실행
     await executeTransferProcess(
       newPage,
       { sheetUrl, sheetName, columnMapping },

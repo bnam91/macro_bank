@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node main.js",
     "start:secret": "node index-secret.js",
-    "name": "node index-profile.js"
+    "name": "node index-profile.js",
+    "sheet": "node scripts/add-sheet-names.js"
   },
   "keywords": [
     "puppeteer",

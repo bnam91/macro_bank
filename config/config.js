@@ -16,6 +16,9 @@ const config = {
   // 사용자 데이터 디렉토리 경로
   userDataPath: expandPath('~/Documents/github_cloud/user_data'),
   
+  // 기본 시트 이름 (자동 선택)
+  defaultSheetName: '고야_입금요청내역',
+  
   // Google 시트 목록
   sheets: [
     {
