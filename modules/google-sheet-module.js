@@ -230,10 +230,10 @@ async function buildTransferData(rows, columnMapping, sheetConfig) {
       continue;
     }
 
-    // Q열(상태) 확인 - 빈값이거나 없는 경우만 처리
+    // Q열(상태) 확인 - 빈값이거나 "입금요청"인 경우만 처리
     const status = (row[STATUS_COLUMN_INDEX] || "").trim();
-    if (status !== "") {
-      // 상태가 비어있지 않으면 건너뛰기
+    if (status !== "" && status !== "입금요청") {
+      // 상태가 비어있지 않고 "입금요청"이 아니면 건너뛰기
       console.log(`  행 ${i + 1}: Q열에 상태값 있음 ("${status}") - 건너뜀`);
       continue;
     }
@@ -253,6 +253,7 @@ async function buildTransferData(rows, columnMapping, sheetConfig) {
       accountNumber,
       nameProduct,
       productName,
+      customerName, // 이름도 저장
       amount,
       rowIndex: i, // 원본 시트의 행 인덱스 저장 (헤더 제외, 0부터 시작)
     });

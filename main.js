@@ -310,7 +310,7 @@ async function openCoupang() {
       defaultViewport: null,
       userDataDir: userDataDir,
       args: [
-        '--window-size=960,720', // half 사이즈 (일반적인 화면 크기의 절반)
+        '--window-size=1440,1080', // 가로 1440px, 세로는 충분히 큰 값
         '--no-sandbox',
         '--disable-blink-features=AutomationControlled',
         // 캐시 크기 제한 (100MB로 제한)
@@ -337,8 +337,10 @@ async function openCoupang() {
     const pages = await browser.pages();
     const page = pages[0];
     
-    // 창 크기를 화면의 절반 크기로 설정
-    await page.setViewport({ width: 960, height: 720 });
+    // 창 크기 설정 (세로는 최대화)
+    await page.goto('about:blank'); // 먼저 페이지를 로드해야 screen 정보 접근 가능
+    const screenHeight = await page.evaluate(() => window.screen.availHeight);
+    await page.setViewport({ width: 1440, height: screenHeight || 1080 });
 
     // 구글로 이동
     await page.goto('https://www.google.com');

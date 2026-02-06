@@ -129,99 +129,122 @@ async function executeTransferProcess(page, sheetConfig, autoTransfer = false) {
       amount: 10         // K열: 금액
     };
     
+    // 시트 전체 데이터 읽기 (매칭을 위해)
+    console.log("📊 시트 전체 데이터를 읽어서 매칭 중...");
+    const allSheetRows = await fetchSheetValues({
+      sheetUrl: sheetConfig.sheetUrl,
+      sheetName: sheetConfig.sheetName,
+      authModulePath: sheetConfig.authModulePath
+    });
+    
     for (const data of processedData) {
-      if (data.rowIndex !== undefined) {
-        try {
-          // rowIndex는 헤더를 제외한 인덱스 (0부터 시작)
-          // 시트에서는 헤더가 1행이므로, 데이터는 2행부터 시작
-          // 따라서 시트 행 번호는 rowIndex + 2가 되어야 함
-          const expectedSheetRow = data.rowIndex + 2; // 예상 시트 행 번호
-          const actualRowIndex = data.rowIndex + 1; // updateSheetValue에 전달할 인덱스
+      try {
+        // 입력한 데이터 정보 출력
+        console.log(`\n  📋 검수 대상: ${data.nameProduct}`);
+        console.log(`     은행: ${data.bank}`);
+        console.log(`     계좌번호: ${data.accountNumber}`);
+        console.log(`     금액: ${data.amount.toLocaleString()}`);
+        console.log(`     이름.제품명: ${data.nameProduct}`);
+        console.log(`     제품명: ${data.productName || '(없음)'}`);
+        
+        // 시트에서 일치하는 행 찾기 (제품명, 이름, 계좌번호, 금액으로 매칭)
+        let matchedRowIndex = -1;
+        const inputCustomerName = String(data.customerName || '').trim();
+        const inputProductName = String(data.productName || '').trim();
+        const inputAccountNumber = (data.accountNumber || '').replace(/[^0-9]/g, '');
+        const inputAmountNum = parseFloat(String(data.amount || '').replace(/[^0-9.]/g, '')) || 0;
+        
+        // 디버깅: 입력 데이터 확인
+        console.log(`     🔍 매칭 시도 - 이름: "${inputCustomerName}", 제품: "${inputProductName}", 계좌: "${inputAccountNumber}", 금액: ${inputAmountNum.toLocaleString()}`);
+        
+        for (let i = 1; i < allSheetRows.length; i++) { // 헤더 제외 (i=0)
+          const row = allSheetRows[i];
+          if (!Array.isArray(row) || row.length === 0) continue;
           
-          // 입력한 데이터 정보 출력 (이체 정보 입력 시와 동일한 형식)
-          console.log(`\n  📋 검수 대상: ${data.nameProduct}`);
-          console.log(`     은행: ${data.bank}`);
-          console.log(`     계좌번호: ${data.accountNumber}`);
-          console.log(`     금액: ${data.amount.toLocaleString()}`);
-          console.log(`     이름.제품명: ${data.nameProduct}`);
-          console.log(`     제품명: ${data.productName || '(없음)'}`);
-          console.log(`     예상 행: ${expectedSheetRow} (Q${expectedSheetRow})`);
+          // 최소 컬럼 수 확인
+          const maxColumnIndex = Math.max(
+            columnMapping.customerName || 0,
+            columnMapping.productName || 0,
+            columnMapping.accountInfo || 0,
+            columnMapping.amount || 0
+          );
           
-          // 기록 전 검수: 시트의 해당 행에서 여러 컬럼 확인
-          const sheetRow = await fetchSheetValues({
-            sheetUrl: sheetConfig.sheetUrl,
-            sheetName: sheetConfig.sheetName,
-            authModulePath: sheetConfig.authModulePath,
-            range: `${sheetConfig.sheetName}!A${actualRowIndex + 1}:Q${actualRowIndex + 1}`
-          });
+          if (row.length <= maxColumnIndex) continue;
           
-          if (sheetRow.length > 0 && sheetRow[0].length > 0) {
-            const row = sheetRow[0];
-            const sheetCustomerName = (row[columnMapping.customerName] || '').toString().trim();
-            const sheetProductName = (row[columnMapping.productName] || '').toString().trim();
-            const sheetAccountInfo = (row[columnMapping.accountInfo] || '').toString().trim();
-            const sheetAmount = row[columnMapping.amount] || '';
-            
-            // 계좌번호에서 숫자만 추출하여 비교
-            const sheetAccountNumber = sheetAccountInfo.replace(/[^0-9]/g, '');
-            const inputAccountNumber = data.accountNumber.replace(/[^0-9]/g, '');
-            
-            // 금액 비교 (쉼표 제거)
-            const sheetAmountNum = parseFloat(String(sheetAmount).replace(/[^0-9.]/g, '')) || 0;
-            const inputAmountNum = parseFloat(String(data.amount).replace(/[^0-9.]/g, '')) || 0;
-            
-            // 검수 결과
-            const nameMatch = sheetCustomerName.includes(data.customerName) || data.customerName.includes(sheetCustomerName);
-            const productMatch = !data.productName || sheetProductName.includes(data.productName) || data.productName.includes(sheetProductName);
-            const accountMatch = sheetAccountNumber.includes(inputAccountNumber) || inputAccountNumber.includes(sheetAccountNumber);
-            const amountMatch = Math.abs(sheetAmountNum - inputAmountNum) < 1; // 1원 이하 차이는 허용
-            
-            console.log(`     시트 데이터:`);
-            console.log(`       이름: "${sheetCustomerName}" ${nameMatch ? '✅' : '❌'}`);
-            console.log(`       제품: "${sheetProductName}" ${productMatch ? '✅' : '❌'}`);
-            console.log(`       계좌: "${sheetAccountInfo}" ${accountMatch ? '✅' : '❌'}`);
-            console.log(`       금액: ${sheetAmountNum.toLocaleString()} ${amountMatch ? '✅' : '❌'}`);
-            
-            const isValidRow = nameMatch && productMatch && accountMatch && amountMatch;
-            
-            if (!isValidRow) {
-              console.log(`  ⚠️ 경고: 행 ${expectedSheetRow}의 데이터가 입력한 정보와 일치하지 않습니다!`);
-              console.log(`     입력한 행이 맞는지 확인해주세요.`);
-            } else {
-              console.log(`  ✅ 행 ${expectedSheetRow} 데이터 검수 통과`);
-            }
-          } else {
-            console.log(`  ⚠️ 경고: 행 ${expectedSheetRow}의 데이터를 읽을 수 없습니다.`);
+          const sheetCustomerName = (row[columnMapping.customerName] != null ? String(row[columnMapping.customerName]) : '').trim();
+          const sheetProductName = (row[columnMapping.productName] != null ? String(row[columnMapping.productName]) : '').trim();
+          const sheetAccountInfo = (row[columnMapping.accountInfo] != null ? String(row[columnMapping.accountInfo]) : '').trim();
+          const sheetAmount = row[columnMapping.amount] != null ? row[columnMapping.amount] : '';
+          
+          // 계좌번호에서 숫자만 추출하여 비교
+          const sheetAccountNumber = (sheetAccountInfo || '').replace(/[^0-9]/g, '');
+          
+          // 금액 비교 (쉼표 제거)
+          const sheetAmountNum = parseFloat(String(sheetAmount || '').replace(/[^0-9.]/g, '')) || 0;
+          
+          // 매칭 확인 (모든 조건이 일치해야 함)
+          const nameMatch = (sheetCustomerName && inputCustomerName) && 
+            (sheetCustomerName.includes(inputCustomerName) || inputCustomerName.includes(sheetCustomerName));
+          const productMatch = !inputProductName || !sheetProductName || 
+            (sheetProductName.includes(inputProductName) || inputProductName.includes(sheetProductName));
+          const accountMatch = (sheetAccountNumber && inputAccountNumber) && 
+            (sheetAccountNumber.includes(inputAccountNumber) || inputAccountNumber.includes(sheetAccountNumber));
+          const amountMatch = Math.abs(sheetAmountNum - inputAmountNum) < 1; // 1원 이하 차이는 허용
+          
+          // 디버깅: 매칭 결과 확인
+          if (i <= 5) { // 처음 5개 행만 디버깅 출력
+            console.log(`     [행 ${i + 1}] 이름: "${sheetCustomerName}" ${nameMatch ? '✅' : '❌'} | 제품: "${sheetProductName}" ${productMatch ? '✅' : '❌'} | 계좌: ${accountMatch ? '✅' : '❌'} | 금액: ${amountMatch ? '✅' : '❌'}`);
           }
           
-          // 이체완료 기록
-          await updateSheetValue({
-            sheetUrl: sheetConfig.sheetUrl,
-            sheetName: sheetConfig.sheetName,
-            authModulePath: sheetConfig.authModulePath,
-            rowIndex: actualRowIndex,
-            columnIndex: STATUS_COLUMN_INDEX,
-            value: '이체완료'
-          });
-          
-          // 기록 후 검수: 실제로 올바른 셀에 기록되었는지 확인
-          await new Promise(resolve => setTimeout(resolve, 500)); // 잠시 대기
-          const recordedValue = await getSheetValue({
-            sheetUrl: sheetConfig.sheetUrl,
-            sheetName: sheetConfig.sheetName,
-            authModulePath: sheetConfig.authModulePath,
-            rowIndex: actualRowIndex,
-            columnIndex: STATUS_COLUMN_INDEX
-          });
-          
-          if (recordedValue === '이체완료') {
-            console.log(`  ✅ 행 ${expectedSheetRow} (Q${expectedSheetRow}): '이체완료' 기록 완료`);
-          } else {
-            console.error(`  ❌ 검수 실패: 행 ${expectedSheetRow} (Q${expectedSheetRow})에 '이체완료'가 기록되지 않았습니다. (실제 값: "${recordedValue}")`);
+          if (nameMatch && productMatch && accountMatch && amountMatch) {
+            matchedRowIndex = i; // 시트 행 인덱스 (헤더 포함, 0부터 시작)
+            const sheetRowNumber = i + 1; // 실제 시트 행 번호 (1부터 시작)
+            
+            console.log(`  ✅ 매칭된 행 발견: 행 ${sheetRowNumber} (Q${sheetRowNumber})`);
+            console.log(`     이름: "${sheetCustomerName}" ✅`);
+            console.log(`     제품: "${sheetProductName}" ✅`);
+            console.log(`     계좌: "${sheetAccountInfo}" ✅`);
+            console.log(`     금액: ${sheetAmountNum.toLocaleString()} ✅`);
+            break;
           }
-        } catch (error) {
-          console.error(`  ❌ 행 ${data.rowIndex + 2}: ${data.nameProduct} - 상태 기록 실패: ${error.message}`);
         }
+        
+        if (matchedRowIndex === -1) {
+          console.error(`  ❌ 일치하는 행을 찾을 수 없습니다!`);
+          console.error(`     이름: "${inputCustomerName}", 제품: "${inputProductName}", 계좌: "${inputAccountNumber}", 금액: ${inputAmountNum.toLocaleString()}`);
+          continue;
+        }
+        
+        // 이체완료 기록
+        // updateSheetValue는 rowIndex에 +1을 하므로, matchedRowIndex를 그대로 전달하면 됨
+        // matchedRowIndex는 헤더 포함 인덱스 (0부터 시작), 시트 행 번호는 matchedRowIndex + 1
+        await updateSheetValue({
+          sheetUrl: sheetConfig.sheetUrl,
+          sheetName: sheetConfig.sheetName,
+          authModulePath: sheetConfig.authModulePath,
+          rowIndex: matchedRowIndex, // 헤더 포함 인덱스 (0부터 시작)
+          columnIndex: STATUS_COLUMN_INDEX,
+          value: '이체완료'
+        });
+        
+        // 기록 후 검수: 실제로 올바른 셀에 기록되었는지 확인
+        await new Promise(resolve => setTimeout(resolve, 500)); // 잠시 대기
+        const recordedValue = await getSheetValue({
+          sheetUrl: sheetConfig.sheetUrl,
+          sheetName: sheetConfig.sheetName,
+          authModulePath: sheetConfig.authModulePath,
+          rowIndex: matchedRowIndex, // getSheetValue도 rowIndex에 +1을 하므로 동일하게 전달
+          columnIndex: STATUS_COLUMN_INDEX
+        });
+        
+        const sheetRowNumber = matchedRowIndex + 1;
+        if (recordedValue === '이체완료') {
+          console.log(`  ✅ 행 ${sheetRowNumber} (Q${sheetRowNumber}): '이체완료' 기록 완료`);
+        } else {
+          console.error(`  ❌ 검수 실패: 행 ${sheetRowNumber} (Q${sheetRowNumber})에 '이체완료'가 기록되지 않았습니다. (실제 값: "${recordedValue}")`);
+        }
+      } catch (error) {
+        console.error(`  ❌ ${data.nameProduct} - 상태 기록 실패: ${error.message}`);
       }
     }
     

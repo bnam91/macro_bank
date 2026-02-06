@@ -2,12 +2,12 @@
 
 import { switchToFrame } from './frame-utils.js';
 
-// 메인 페이지 팝업 확인 및 처리 (최대 15초)
+// 메인 페이지 팝업 확인 및 처리 (최대 7초)
 export async function checkAndCloseMainPagePopup(page) {
   try {
-    console.log("메인 페이지 팝업 확인 중... (최대 15초)");
+    console.log("메인 페이지 팝업 확인 중... (최대 7초)");
     
-    const maxWaitTime = 15; // 최대 15초
+    const maxWaitTime = 7; // 최대 7초
     
     for (let i = 0; i < maxWaitTime; i++) {
       const remainingTime = maxWaitTime - i;
@@ -171,7 +171,7 @@ export async function checkAndCloseMainPagePopup(page) {
     
     // 카운트다운 줄 정리
     process.stdout.write('\r' + ' '.repeat(50) + '\r');
-    console.log("15초 동안 팝업이 나타나지 않았습니다. 이체 메뉴 클릭을 진행합니다.");
+    console.log("7초 동안 팝업이 나타나지 않았습니다. 이체 메뉴 클릭을 진행합니다.");
     return true; // 팝업이 없어도 정상 진행
   } catch (error) {
     // 카운트다운 줄 정리
