@@ -6,9 +6,11 @@
   "main": "main.js",
   "scripts": {
     "start": "node main.js",
+    "dev": "node main.js",
     "start:secret": "node index-secret.js",
     "name": "node index-profile.js",
-    "sheet": "node scripts/add-sheet-names.js"
+    "sheet": "node scripts/add-sheet-names.js",
+    "update": "node scripts/update-sheet-status.js"
   },
   "keywords": [
     "puppeteer",

@@ -98,7 +98,7 @@ async function clickLocalDisk(targetPage, page) {
   }
 }
 
-async function selectCertStore(targetPage, page, certStoreKeywords) {
+async function selectCertStore(targetPage, page, certStoreKeywords, certStoreIndex = 0) {
   try {
     let extensionElement = null;
     let checkbox = null;
@@ -154,7 +154,11 @@ async function selectCertStore(targetPage, page, certStoreKeywords) {
       }
     }
 
+    // config의 certStoreIndex 사용 (0=로컬 디스크 (C:), 1=DVD (D:), 2=Home on Mac (Z:) 등)
+    const index = Math.max(0, certStoreIndex);
     const selectors = [
+      `li.certStore${index}`,
+      `#certStorePopupBody li.certStore${index}`,
       "li.certStore1",
       "li[aria-label*='Seagate']",
       "li[aria-label*='Backup']",

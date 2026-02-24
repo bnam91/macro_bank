@@ -47,7 +47,13 @@ function getCertStoreKeywords(config) {
   return keywords;
 }
 
+function getCertStoreIndex(config) {
+  if (!config || typeof config.certStoreIndex !== 'number') return 0;
+  return Math.max(0, config.certStoreIndex);
+}
+
 export {
   loadCertStoreConfig,
-  getCertStoreKeywords
+  getCertStoreKeywords,
+  getCertStoreIndex
 };

@@ -1,4 +1,4 @@
-import { handleUserInput, waitForEnter } from './user-input-module.js';
+import { handleUserInput, waitForEnter, selectNextAction } from './user-input-module.js';
 import { executeCertLogin } from './cert-module.js';
 import { loadSheetTransferData, updateSheetValue, getSheetValue, fetchSheetValues } from "./google-sheet-module.js";
 import { switchToFrame } from './utils/frame-utils.js';
@@ -250,9 +250,16 @@ async function executeTransferProcess(page, sheetConfig, autoTransfer = false) {
     
     console.log("\n✅ 모든 이체 완료 상태 기록 및 검수가 완료되었습니다.");
 
-    // 13. 다음 이체 진행 여부 확인
+    // 13. 다음 작업 선택
     console.log("\n");
-    await waitForEnter("다음 이체도 진행할까요? (기능구현예정) - 엔터를 눌러주세요: ");
+    const selectedAction = await selectNextAction();
+    
+    // 선택한 작업에 따른 처리 (기능은 나중에 구현 예정)
+    if (selectedAction === 1) {
+      console.log("다음 이체 진행하기 기능은 추후 구현 예정입니다.");
+    } else if (selectedAction === 2) {
+      console.log("이체완료 업데이트 기능은 추후 구현 예정입니다.");
+    }
 
     console.log("\n=== 이체 프로세스 완료 ===");
     return true;

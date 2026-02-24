@@ -131,6 +131,32 @@ function waitForEnter(message = "계속하려면 엔터를 누르세요...") {
 }
 
 /**
+ * 사용자에게 작업 선택을 받는 함수
+ * @returns {Promise<number>} - 선택한 번호 (1 또는 2)
+ */
+function selectNextAction() {
+  if (!rl) {
+    throw new Error('readline 인터페이스가 설정되지 않았습니다. setReadlineInterface를 먼저 호출하세요.');
+  }
+  
+  return new Promise((resolve) => {
+    console.log("\n다음 작업을 선택해주세요.");
+    console.log("1. 다음 이체 진행하기");
+    console.log("2. 이체완료 업데이트");
+    rl.question("선택 (1 또는 2): ", (answer) => {
+      const choice = parseInt(answer.trim());
+      if (choice === 1 || choice === 2) {
+        resolve(choice);
+      } else {
+        console.log("잘못된 선택입니다. 1 또는 2를 입력해주세요.");
+        // 재귀적으로 다시 질문
+        selectNextAction().then(resolve);
+      }
+    });
+  });
+}
+
+/**
  * readline 인터페이스 종료
  */
 function closeInput() {
@@ -145,6 +171,7 @@ export {
   savePageHTML,
   handleUserInput,
   waitForEnter,
+  selectNextAction,
   closeInput
 };
 

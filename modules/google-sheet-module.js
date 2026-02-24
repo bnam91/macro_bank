@@ -121,6 +121,43 @@ async function updateSheetValue({ sheetUrl, sheetName, authModulePath, rowIndex,
   });
 }
 
+/** 행 배경색 (B~P열) 업데이트. rowIndex는 1부터 시작. update-sheet-status.js 참고 */
+async function updateRowColor({ sheetUrl, sheetName, rowIndex, authModulePath, colorName = "진한 회색 1" }) {
+  const spreadsheetId = extractSpreadsheetId(sheetUrl);
+  if (!spreadsheetId) throw new Error("스프레드시트 ID를 확인할 수 없습니다.");
+
+  const auth = await getAuthClient(authModulePath);
+  const sheets = google.sheets({ version: "v4", auth });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const sheet = (meta.data.sheets || []).find((s) => (s.properties.title === sheetName));
+  if (!sheet) throw new Error(`시트를 찾을 수 없습니다: ${sheetName}`);
+  const sheetId = sheet.properties.sheetId;
+
+  const colors = { "진한 회색 1": { red: 0.8, green: 0.8, blue: 0.8 }, 주황색: { red: 1, green: 0.6, blue: 0 } };
+  const rgb = colors[colorName] || colors["진한 회색 1"];
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          updateCells: {
+            range: {
+              sheetId,
+              startRowIndex: rowIndex - 1,
+              endRowIndex: rowIndex,
+              startColumnIndex: 1,
+              endColumnIndex: 16,
+            },
+            rows: [{ values: Array(15).fill({ userEnteredFormat: { backgroundColor: rgb } }) }],
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        },
+      ],
+    },
+  });
+}
+
 // 주민번호 검증 함수 (하이픈 제외 13자리 확인)
 function validateResidentNumber(residentNumber) {
   if (!residentNumber || residentNumber.trim() === "") {
@@ -285,6 +322,7 @@ export {
   loadSheetTransferData,
   extractSpreadsheetId,
   updateSheetValue,
+  updateRowColor,
   getSheetValue,
   fetchSheetValues,
 };

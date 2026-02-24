@@ -1,0 +1,19 @@
+
+npm start 또는 npm run start
+실행: node main.js
+메인 크롬 자동 실행 스크립트
+
+
+
+
+npm run sheet
+
+실행: node scripts/add-sheet-names.js
+시트명 추가 스크립트
+
+
+
+npm run update
+
+실행: node scripts/update-sheet-status.js
+입금 상태 업데이트 스크립트

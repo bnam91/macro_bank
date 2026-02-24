@@ -1,4 +1,4 @@
-import { loadCertStoreConfig, getCertStoreKeywords } from './config.js';
+import { loadCertStoreConfig, getCertStoreKeywords, getCertStoreIndex } from './config.js';
 import {
   findPopupFrame,
   waitForPopupContainer,
@@ -22,7 +22,8 @@ async function handleCertPopup(page) {
     console.log("\n[2/5] 확장매체(저장매체) 선택");
     const certStoreConfig = await loadCertStoreConfig();
     const certStoreKeywords = getCertStoreKeywords(certStoreConfig);
-    await selectCertStore(targetPage, page, certStoreKeywords);
+    const certStoreIndex = getCertStoreIndex(certStoreConfig);
+    await selectCertStore(targetPage, page, certStoreKeywords, certStoreIndex);
 
     console.log("\n[3/5] 인증서 선택");
     await selectCertificate(targetPage, page, "신현빈");

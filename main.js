@@ -14,6 +14,9 @@ import { main as addSheetNames } from './scripts/add-sheet-names.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// npm run dev 로 실행 시 true (크롬 창 유지 모드)
+const isDevMode = process.env.npm_lifecycle_event === 'dev';
+
 // readline 인터페이스 생성 (단일 인스턴스)
 const rl = readline.createInterface({
   input: process.stdin,
@@ -263,10 +266,17 @@ async function selectProfile(userDataParent) {
   }
 }
 
+let browserInstance = null;
+
 async function openCoupang() {
   let browser;
   
   try {
+    // 입금요청 현황판 열기 여부 확인
+    const openStatusBoard = (await question("입금요청 현황판도 함께 열까요? (y/n): ")).toLowerCase().trim();
+    const statusBoardUrl = 'https://docs.google.com/spreadsheets/d/1CK2UXTy7HKjBe2T0ovm5hfzAAKZxZAR_ev3cbTPOMPs/edit?gid=1565864271#gid=1565864271';
+    const depositRequestSheetUrl = 'https://docs.google.com/spreadsheets/d/1NOP5_s0gNUCWaGIgMo5WZmtqBbok_5a4XdpNVwu8n5c/edit?gid=0#gid=0';
+    
     // 시트명 추가 스크립트 먼저 실행
     console.log("📋 시트명 추가 스크립트 실행 중...\n");
     try {
@@ -331,12 +341,16 @@ async function openCoupang() {
     }
 
     browser = await puppeteer.launch(options);
+    browserInstance = browser;
     console.log('✅ 크롬이 열렸습니다. 종료하려면 Ctrl+C를 누르세요.\n');
+    if (isDevMode) {
+      console.log('🔧 dev 모드: Ctrl+C 시 크롬 창은 유지됩니다.\n');
+    }
 
     // 첫 번째 페이지 사용
     const pages = await browser.pages();
     const page = pages[0];
-    
+  
     // 창 크기 설정 (세로는 최대화)
     await page.goto('about:blank'); // 먼저 페이지를 로드해야 screen 정보 접근 가능
     const screenHeight = await page.evaluate(() => window.screen.availHeight);
@@ -344,6 +358,29 @@ async function openCoupang() {
 
     // 구글로 이동
     await page.goto('https://www.google.com');
+    
+    // 입금요청 현황판·입금요청내역 열기 (사용자가 요청한 경우)
+    if (openStatusBoard === 'y') {
+      const depositRequestPage = await browser.newPage();
+      await depositRequestPage.goto(depositRequestSheetUrl);
+      const statusBoardPage = await browser.newPage();
+      await statusBoardPage.goto(statusBoardUrl);
+      console.log('입금요청내역 시트와 입금요청 현황판을 열었습니다.\n');
+      
+      // 이체프로세스 진행 여부 확인
+      const proceedTransfer = (await question("이체프로세스를 진행할까요? (y/n): ")).toLowerCase().trim();
+      if (proceedTransfer !== 'y') {
+        console.log('이체프로세스를 건너뜁니다. 브라우저는 열려있습니다.\n');
+        // 브라우저 종료 감지 (dev 모드가 아니면 프로세스 종료)
+        browser.on('disconnected', () => {
+          console.log('브라우저가 닫혔습니다.');
+          if (!isDevMode) process.exit(0);
+        });
+        // 무한 대기
+        await new Promise(() => {});
+        return;
+      }
+    }
 
     // 새 탭 열기 - 한은 로그인 페이지
     const newPage = await browser.newPage();
@@ -393,13 +430,13 @@ async function openCoupang() {
       autoTransfer,
     );
 
-    // 브라우저 종료 감지
+    // 브라우저 종료 감지 (dev 모드가 아니면 프로세스 종료)
     browser.on('disconnected', () => {
       console.log('브라우저가 닫혔습니다.');
-      process.exit(0);
+      if (!isDevMode) process.exit(0);
     });
 
-    // 무한 대기
+    // 무한 대기 (프로세스가 계속 실행되어 크롬 창 유지)
     await new Promise(() => {});
 
   } catch (error) {
@@ -415,6 +452,13 @@ async function openCoupang() {
 process.on('SIGINT', async () => {
   console.log('\n종료 중...');
   rl.close();
+  // dev 모드: 크롬만 연결 해제하고 프로세스 종료 → 크롬 창은 유지
+  if (isDevMode && browserInstance) {
+    try {
+      browserInstance.disconnect();
+      console.log('크롬 창은 유지됩니다.');
+    } catch (_) {}
+  }
   process.exit(0);
 });
 
